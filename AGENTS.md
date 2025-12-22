@@ -19,10 +19,12 @@
 - Logging: prefer structured, informative messages; keep user-facing stdout clean when `--json` is used.
 
 ## Testing Guidelines
-- No formal test harness yet; when adding tests, prefer Python `unittest` or lightweight script-based checks that exercise CLI commands against sample exports.
-- Keep fixture exports small and anonymized; store under a `tests/fixtures/` directory if/when introduced.
-- Report expected exit codes and key JSON fields in assertions.
-- Current tests: `python3 -m unittest discover -s tests` (streams parse path).
+- **Test Suite**: A `unittest` harness exists in the `tests/` directory.
+- **Running Tests**: Execute `python3 -m unittest discover -s tests` to run the full suite.
+- **Writing Tests**:
+  - Prefer lightweight script-based checks that exercise CLI commands against sample exports.
+  - Keep fixture exports small and anonymized; store under `tests/fixtures/` if needed (currently using synthetic data in `tests/`).
+  - Report expected exit codes and key JSON fields in assertions.
 
 ## Commit & Pull Request Guidelines
 - Commits: concise, imperative summaries (e.g., “Add FTS search subcommand”, “Refine run metadata write”); group related changes together.
