@@ -1,19 +1,31 @@
-# TODOS — Branch-Aware Graph Edges + Foreign Keys + Migration (Schema v3)
+# Project Roadmap & Implementation Status
 
-This file is a step-by-step implementation guide to:
+## Current TODOs
 
-1) Make conversation branches explicit/exportable via a new `node_children.jsonl`.
-2) Add a real `node_children` table in SQLite for fast branch queries.
-3) Add foreign key (FK) enforcement for data integrity (messages can’t reference missing nodes, etc.).
-4) Add a migration path (bump `CURRENT_SCHEMA_VERSION`) with backfill.
-
-Scope: `ChatGPT_Export_parser.py` is the single “source of truth” for CLI + parsing + DB.
-
-Status: implemented in the current repo (schema v3). Treat this as a design/implementation record and a checklist for future refactors.
+- [ ] **Refactoring**: Split the monolithic `ChatGPT_Export_parser.py` into a package structure (e.g., `chatgpt_parser/` with `core`, `cli`, `db` modules) to improve maintainability.
+- [ ] **UI**: Explore adding a web-based viewer (e.g., lightweight Flask or Streamlit app) to browse the SQLite database.
+- [ ] **Testing**: Expand test coverage for edge cases in Markdown export and specific tool call formats.
 
 ---
 
-## Goals (What “Done” Looks Like)
+## Completed
+
+### Schema v3: Branch-Aware Graph & Foreign Keys (Implemented)
+*Status: Live in `ChatGPT_Export_parser.py` (Schema v3).*
+
+**Summary of Changes:**
+1.  **Explicit Branches**: Added `node_children` table (and JSONL output) to allow fast, recursive tree traversal.
+2.  **Data Integrity**: Enforced `FOREIGN KEY` constraints across `messages`, `nodes`, `conversations`, etc.
+3.  **Migration**: Added automatic migration to Schema v3 with backfill for existing databases.
+
+---
+
+# Archived Design Note: Schema v3 Implementation
+*(Preserved for historical context on the v3 design decisions)*
+
+This section records the design and implementation steps taken for the Schema v3 upgrade.
+
+## Goals (What “Done” Looked Like)
 
 - `parse` emits `normalized_runs/<run_id>/node_children.jsonl` where each line is one edge:
   - `run_id`, `conversation_id`, `parent_node_id`, `child_node_id`, `child_index`
@@ -25,6 +37,7 @@ Status: implemented in the current repo (schema v3). Treat this as a design/impl
   - `node_children` edges must point at real nodes + a real conversation
 - `migrate` upgrades older DBs and backfills `node_children` if missing.
 - Tests verify `node_children.jsonl` emission + DB ingestion.
+
 
 ---
 

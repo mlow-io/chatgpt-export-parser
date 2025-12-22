@@ -132,3 +132,6 @@ For the detailed field list and CLI spec, refer to `SCHEMA_AND_SPEC.md` and `CLI
 - **Standard Library Only:** No third-party dependencies (e.g., `pandas`, `sqlalchemy`) are used.
 - **Single File:** The entire logic resides in `ChatGPT_Export_parser.py` for easy portability.
 - **Idempotency:** Run IDs allow tracking data provenance. `ingest` supports `skip_existing` (default) or `overwrite` modes.
+
+## Roadmap
+See `TODOS.md` for the current project backlog and completed features.
