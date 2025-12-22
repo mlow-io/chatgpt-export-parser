@@ -133,5 +133,14 @@ For the detailed field list and CLI spec, refer to `SCHEMA_AND_SPEC.md` and `CLI
 - **Single File:** The entire logic resides in `ChatGPT_Export_parser.py` for easy portability.
 - **Idempotency:** Run IDs allow tracking data provenance. `ingest` supports `skip_existing` (default) or `overwrite` modes.
 
+## Workflow Mandate
+
+- **Regular Commits**: After every logical change (refactors, documentation updates, or feature additions), even subtle ones, a git commit MUST be made with a clear, descriptive message.
+
+- **Regular Pushes**: Commits should be pushed to the remote repository promptly to ensure the remote state matches the local progress.
+
+
+
 ## Roadmap
+
 See `TODOS.md` for the current project backlog and completed features.
