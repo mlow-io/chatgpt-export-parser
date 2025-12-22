@@ -89,7 +89,7 @@ This document is the authoritative schema and CLI specification for the current 
 - check: integrity
 - list-runs / diff-runs
 - dump-db / restore-db
-- migrate: schema migrations (currently schema_version=2: run_id columns, time_index/message_kind, message_fts/indexes)
+- migrate: schema migrations (currently schema_version=3: adds `node_children`, enables FK constraints, rebuilds FTS)
 
 ## Run Metadata Examples
 `run.json`:

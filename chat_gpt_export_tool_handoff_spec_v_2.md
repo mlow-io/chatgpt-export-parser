@@ -26,6 +26,7 @@ We normalize the raw ChatGPT export into the following logical entities:
 
 - `conversations`
 - `nodes` (the graph from `mapping`)
+- `node_children` (explicit parent/child edges for branches)
 - `messages`
 - `links`
 - `attachments`
@@ -42,12 +43,14 @@ Per run, we create an output directory (e.g. `normalized/<timestamp>/` or user-p
 
 - `conversations.jsonl`
 - `nodes.jsonl`
+- `node_children.jsonl`
 - `messages.jsonl`
 - `links.jsonl`
 - `attachments.jsonl`
 - `tool_calls.jsonl`
 - `tool_results.jsonl`
-- `stats.json`
+- `run.json`
+- `manifest.json`
 - `parser.log`
 
 This directory is **retained per run** as an immutable snapshot. The app should never silently overwrite or discard JSONL artifacts unless explicitly configured to do so.
@@ -212,4 +215,3 @@ Important: **Parser runs must always write JSONL into a per-run directory first,
 - More advanced dedupe/resume strategies when rerunning on overlapping exports.
 - Optional PII-masking modes for JSONL and/or DB.
 - True streaming ingestion (e.g. `ijson`) for very large export files.
-

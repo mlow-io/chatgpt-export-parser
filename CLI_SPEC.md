@@ -2,8 +2,10 @@
 
 This spec captures the short-term CLI surface and DB hooks we need (no GUI/semantic layer). It assumes the current parser/ingester foundations already in `ChatGPT_Export_parser.py`.
 
+Note: this file is partly aspirational; not all config/log-format features described here are implemented in the current script.
+
 ## Global Behavior
-- Outputs are run-scoped: each `parse`/`parse-and-ingest` creates a run directory with JSONL, `run.json`, `stats.json` (optional), and `parser.log`.
+- Outputs are run-scoped: each `parse`/`parse-and-ingest` creates a run directory with JSONL, `run.json`, `manifest.json`, and `parser.log`.
 - Provenance: every DB row carries `run_id`; runs table mirrors the on-disk metadata.
 - Output controls: `--json` (machine-readable summary), `--quiet`, `--verbose`, `--log-format text|json`.
 - Config precedence: CLI flags > env vars (`CHATGPT_EXPORT_DB`, `CHATGPT_EXPORT_OUTPUT_ROOT`, etc.) > config file (`~/.chatgpt_export/config.toml` by default) > hardcoded defaults.
@@ -116,6 +118,8 @@ Indexes helpful for queries:
 ```sql
 CREATE INDEX IF NOT EXISTS idx_messages_conv_kind ON messages(run_id, conversation_id, message_kind);
 CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(run_id, conversation_id, time_index);
+CREATE INDEX IF NOT EXISTS idx_node_children_parent ON node_children(run_id, parent_node_id);
+CREATE INDEX IF NOT EXISTS idx_node_children_child ON node_children(run_id, child_node_id);
 ```
 
 Meta table for schema versioning:
