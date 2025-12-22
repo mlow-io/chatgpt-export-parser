@@ -21,26 +21,26 @@ Reads raw JSON exports and creates a directory of normalized JSONL files.
 
 ```bash
 # Auto-generate a run ID and save to ./normalized_runs/<run_id>/
-python ChatGPT_Export_parser.py parse conversations.json
+python3 ChatGPT_Export_parser.py parse conversations.json
 
 # Parse directly from a zip export (conversations.json inside)
-python ChatGPT_Export_parser.py parse export.zip
+python3 ChatGPT_Export_parser.py parse export.zip
 
 # Specify an output root
-python ChatGPT_Export_parser.py parse conversations.json --output-root ./my_runs
+python3 ChatGPT_Export_parser.py parse conversations.json --output-root ./my_runs
 
 # Specify a specific output directory (must be empty)
-python ChatGPT_Export_parser.py parse conversations.json --output-dir ./clean_data
+python3 ChatGPT_Export_parser.py parse conversations.json --output-dir ./clean_data
 
 # Streaming is ON by default; disable if needed
-python ChatGPT_Export_parser.py parse conversations.json --no-streaming
+python3 ChatGPT_Export_parser.py parse conversations.json --no-streaming
 ```
 
 ### 2. Ingest (JSONL to SQLite)
 Takes an existing normalized directory and loads it into a database.
 
 ```bash
-python ChatGPT_Export_parser.py ingest \
+python3 ChatGPT_Export_parser.py ingest \
   --jsonl-dir ./normalized_runs/2025-12-05T12-00-00Z \
   --db ./chat_data.db
 ```
@@ -49,7 +49,7 @@ python ChatGPT_Export_parser.py ingest \
 Does both in one step.
 
 ```bash
-python ChatGPT_Export_parser.py parse-and-ingest conversations.json \
+python3 ChatGPT_Export_parser.py parse-and-ingest conversations.json \
   --db ./chat_data.db \
   --output-root ./runs
 ```
@@ -59,41 +59,41 @@ Run basic queries or full-text search against the database without leaving the C
 
 ```bash
 # List recent conversations
-python ChatGPT_Export_parser.py query --db ./chat_data.db --type conversations --limit 5
+python3 ChatGPT_Export_parser.py query --db ./chat_data.db --type conversations --limit 5
 
 # Get details for a specific conversation (JSON format)
-python ChatGPT_Export_parser.py query \
+python3 ChatGPT_Export_parser.py query \
   --db ./chat_data.db \
   --type conversation_detail \
   --conversation-id <uuid> \
   --format json
 
 # FTS search across message text
-python ChatGPT_Export_parser.py search --db ./chat_data.db --q "pizza" --limit 20 --format json
+python3 ChatGPT_Export_parser.py search --db ./chat_data.db --q "pizza" --limit 20 --format json
 ```
 
 ### 5. Export / Integrity / Diff / Maintenance
 ```bash
 # Export a conversation to markdown (optional YAML frontmatter)
-python ChatGPT_Export_parser.py export-conversation --db ./chat_data.db --conversation-id <uuid> --output convo.md --frontmatter
+python3 ChatGPT_Export_parser.py export-conversation --db ./chat_data.db --conversation-id <uuid> --output convo.md --frontmatter
 
 # Export a batch selected via FTS (optional YAML frontmatter)
-python ChatGPT_Export_parser.py export-conversations --db ./chat_data.db --query "postgres" --limit 10 --output-dir ./exports --frontmatter
+python3 ChatGPT_Export_parser.py export-conversations --db ./chat_data.db --query "postgres" --limit 10 --output-dir ./exports --frontmatter
 
 # Export a bundled markdown (and optional HTML/PDF if pandoc + PDF engine installed)
-python ChatGPT_Export_parser.py export-bundle --db ./chat_data.db --since-days 9 --output-markdown ./exports/recent_bundle.md
+python3 ChatGPT_Export_parser.py export-bundle --db ./chat_data.db --since-days 9 --output-markdown ./exports/recent_bundle.md
 
 # Integrity check
-python ChatGPT_Export_parser.py check --db ./chat_data.db --format json
+python3 ChatGPT_Export_parser.py check --db ./chat_data.db --format json
 
 # List and diff runs
-python ChatGPT_Export_parser.py list-runs --db ./chat_data.db
-python ChatGPT_Export_parser.py diff-runs --db ./chat_data.db --run-a <run1> --run-b <run2>
+python3 ChatGPT_Export_parser.py list-runs --db ./chat_data.db
+python3 ChatGPT_Export_parser.py diff-runs --db ./chat_data.db --run-a <run1> --run-b <run2>
 
 # Dump / restore / migrate
-python ChatGPT_Export_parser.py dump-db --db ./chat_data.db --output backup.sql
-python ChatGPT_Export_parser.py restore-db --input backup.sql --db ./restored.db --force
-python ChatGPT_Export_parser.py migrate --db ./chat_data.db
+python3 ChatGPT_Export_parser.py dump-db --db ./chat_data.db --output backup.sql
+python3 ChatGPT_Export_parser.py restore-db --input backup.sql --db ./restored.db --force
+python3 ChatGPT_Export_parser.py migrate --db ./chat_data.db
 ```
 
 ### Global Options

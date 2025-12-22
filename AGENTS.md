@@ -2,14 +2,14 @@
 
 ## Project Structure & Module Organization
 - Core CLI/parser: `ChatGPT_Export_parser.py` (all logic: parse → JSONL → ingest → query).
-- Docs/specs: `GEMINI.md` (overview/usage), `chat_gpt_export_parser_schema_v_1.md` (JSONL schema), `CLI_SPEC.md` (CLI surface + migrations/FTS), `chat_gpt_export_tool_handoff_spec_v_2.md` (broader app plan).
+- Docs/specs: `README.md` (quick start + data safety), `GEMINI.md` (overview/usage), `SCHEMA_AND_SPEC.md` (schema + CLI notes), `CLI_SPEC.md` (draft CLI surface), `chat_gpt_export_tool_handoff_spec_v_2.md` (broader app plan).
 - Outputs (created at runtime): run-scoped directories under `normalized_runs/<run_id>/` with `*.jsonl`, `run.json`, `parser.log`.
 
 ## Build, Test, and Development Commands
-- Parse only: `python ChatGPT_Export_parser.py parse export.json --output-root ./normalized_runs`.
-- Ingest JSONL → SQLite: `python ChatGPT_Export_parser.py ingest --jsonl-dir ./normalized_runs/<run_id> --db ./chatgpt_export.db`.
-- Parse + ingest: `python ChatGPT_Export_parser.py parse-and-ingest export.json --db ./chatgpt_export.db`.
-- Query (examples): `python ChatGPT_Export_parser.py query --db ./chatgpt_export.db --type conversations --limit 5`.
+- Parse only: `python3 ChatGPT_Export_parser.py parse export.json --output-root ./normalized_runs`.
+- Ingest JSONL → SQLite: `python3 ChatGPT_Export_parser.py ingest --jsonl-dir ./normalized_runs/<run_id> --db ./chatgpt_export.db`.
+- Parse + ingest: `python3 ChatGPT_Export_parser.py parse-and-ingest export.json --db ./chatgpt_export.db`.
+- Query (examples): `python3 ChatGPT_Export_parser.py query --db ./chatgpt_export.db --type conversations --limit 5`.
 - Add `--json` for machine-readable summaries; use `--verbose/--quiet` to tune logging.
 
 ## Coding Style & Naming Conventions
@@ -30,6 +30,6 @@
 - Avoid unrelated formatting churn; preserve existing user changes in the worktree.
 
 ## Security & Configuration Tips
-- Config precedence: CLI flags > env vars (e.g., `CHATGPT_EXPORT_DB`, `CHATGPT_EXPORT_OUTPUT_ROOT`) > `~/.chatgpt_export/config.toml` > defaults. Always allow `--db` overrides to avoid locking into a single DB.
+- Config precedence: treat CLI flags as authoritative. A config/env precedence scheme is described in `CLI_SPEC.md` but not fully implemented in the current script.
 - Never delete JSONL artifacts; `overwrite` should only affect DB rows for a specific run_id.
 - Keep exports containing sensitive data local; no network calls are needed for normal operation.

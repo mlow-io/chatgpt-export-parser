@@ -9,6 +9,8 @@ This file is a step-by-step implementation guide to:
 
 Scope: `ChatGPT_Export_parser.py` is the single “source of truth” for CLI + parsing + DB.
 
+Status: implemented in the current repo (schema v3). Treat this as a design/implementation record and a checklist for future refactors.
+
 ---
 
 ## Goals (What “Done” Looks Like)
@@ -354,4 +356,3 @@ Files: `tests/test_streaming_parse.py`, `tests/test_search_and_check.py`
 - `parse` zip streaming path references `stream_json_array_from_file(...)` which is currently undefined; fix by implementing it or reusing `stream_json_array` on a temp file.
 - `search --run-id` currently uses an alias `f.run_id` that doesn’t exist in the SQL; should filter on `message_fts.run_id` or joined `messages.run_id`.
 - Many queries join on `id` without `run_id` scoping; once multi-run is real, prefer scoping reads to a run (`--run-id` or “latest run”).
-
