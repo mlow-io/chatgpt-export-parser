@@ -8,7 +8,8 @@ from types import SimpleNamespace
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from ChatGPT_Export_parser import run_parse, setup_logging
+from chatgpt_parser.cli.commands import run_parse
+from chatgpt_parser.utils.logging import setup_logging
 
 
 def _make_conversation(conv_id: str, message_id: str, ts: float):
