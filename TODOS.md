@@ -2,9 +2,62 @@
 
 ## Current TODOs
 
-- [ ] **Refactoring**: Split the monolithic `ChatGPT_Export_parser.py` into a package structure (e.g., `chatgpt_parser/` with `core`, `cli`, `db` modules) to improve maintainability.
-- [ ] **UI**: Explore adding a web-based viewer (e.g., lightweight Flask or Streamlit app) to browse the SQLite database.
-- [ ] **Testing**: Expand test coverage for edge cases in Markdown export and specific tool call formats.
+### Refactoring Plan: Modular Package Structure
+*Goal: Decompose the monolithic `ChatGPT_Export_parser.py` into a maintainable `chatgpt_parser` package without breaking existing functionality or tests.*
+
+**1. Target Package Structure**
+```text
+chatgpt-parser/
+├── chatgpt_parser/           # New Package Root
+│   ├── __init__.py           # Exposes version and main entry point
+│   ├── __main__.py           # Allows `python -m chatgpt_parser`
+│   ├── config.py             # Constants: SCHEMA_VERSION, URL_REGEX, DEFAULT_CSS
+│   ├── cli/                  # Command Line Interface
+│   │   ├── __init__.py
+│   │   ├── main.py           # Argparse setup & dispatch (entry point)
+│   │   └── commands.py       # run_parse, run_ingest, run_search (Controllers)
+│   ├── core/                 # Business Logic
+│   │   ├── __init__.py
+│   │   ├── parser.py         # process_conversation, determine_message_kind
+│   │   └── exporter.py       # export_conversation_to_markdown, render_*
+│   ├── db/                   # Data Access Layer
+│   │   ├── __init__.py
+│   │   ├── manager.py        # SQLiteManager class
+│   │   └── schema.py         # CREATE_TABLES_SQL, schema versioning
+│   └── utils/                # Shared Helpers
+│       ├── __init__.py
+│       ├── io.py             # stream_json_array, write_jsonl_line
+│       ├── text.py           # markdown_escape, extract_urls
+│       └── logging.py        # setup_logging
+├── ChatGPT_Export_parser.py  # (Legacy wrapper) imports from package and runs main
+└── tests/                    # Updated to import from chatgpt_parser.*
+```
+
+**2. Implementation Steps**
+- [ ] **Phase 1: Scaffolding & Utils**
+    - Create `chatgpt_parser/` and subdirectories.
+    - Move `URL_REGEX`, `DEFAULT_CSS`, `CURRENT_SCHEMA_VERSION` to `config.py`.
+    - Move `stream_json_array`, `write_jsonl_line` to `utils/io.py`.
+    - Move `markdown_escape`, `extract_urls` to `utils/text.py`.
+    - Move `setup_logging` to `utils/logging.py`.
+- [ ] **Phase 2: Database Layer**
+    - Move `CREATE_TABLES_SQL` strings to `db/schema.py`.
+    - Move `SQLiteManager` class to `db/manager.py`.
+    - *Check:* Ensure `SQLiteManager` imports logging and config correctly.
+- [ ] **Phase 3: Core Logic**
+    - Move `process_conversation` and related helpers to `core/parser.py`.
+    - Move `export_conversation_to_markdown` and `run_export_*` logic to `core/exporter.py`.
+- [ ] **Phase 4: CLI & Entry Point**
+    - Move `main()` and `argparse` definitions to `cli/main.py`.
+    - Move `run_parse`, `run_ingest` etc. to `cli/commands.py`.
+    - Create a `ChatGPT_Export_parser.py` shim that simply does `from chatgpt_parser.cli.main import main; main()`.
+- [ ] **Phase 5: Test Updates**
+    - Update `tests/*.py` to import from the new module paths (e.g., `from chatgpt_parser.core.parser import process_conversation`).
+    - Verify all tests pass with `python3 -m unittest discover -s tests`.
+
+**3. Future Considerations (Post-Refactor)**
+- **Type Hinting**: Add strict MyPy checking once files are smaller.
+- **Dependency Management**: Add `pyproject.toml` for proper packaging if we decide to publish to PyPI.
 
 ---
 
@@ -37,6 +90,7 @@ This section records the design and implementation steps taken for the Schema v3
   - `node_children` edges must point at real nodes + a real conversation
 - `migrate` upgrades older DBs and backfills `node_children` if missing.
 - Tests verify `node_children.jsonl` emission + DB ingestion.
+
 
 
 ---
