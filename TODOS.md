@@ -11,7 +11,7 @@
     *   `core/parser.py`: ETL logic.
     *   `db/manager.py`: Database persistence.
     *   `cli/main.py` & `commands.py`: CLI dispatch and controllers.
-3.  **Tests**: Updated all unit tests to point to new modular paths.
+3.  **Tests**: Updated all unit tests to point to new modular paths. Added `tests/test_cli_integration.py` to verify full `parse-and-ingest` workflow.
 4.  **Legacy Support**: Provided a root `ChatGPT_Export_parser.py` shim for backward compatibility.
 
 ---
