@@ -1,0 +1,82 @@
+[
+  {
+    "id": "demo_conv_1",
+    "title": "Demo: branching",
+    "create_time": 1700000000,
+    "update_time": 1700000300,
+    "default_model_slug": "gpt-4o-mini",
+    "current_node": "node_demo1_b",
+    "mapping": {
+      "node_demo1_root": {
+        "id": "node_demo1_root",
+        "parent": null,
+        "children": ["node_demo1_a", "node_demo1_b"],
+        "message": {
+          "id": "msg_demo1_root",
+          "author": {"role": "user"},
+          "content": {"content_type": "text", "parts": ["Hi demo"]},
+          "create_time": 1700000000,
+          "update_time": 1700000000
+        }
+      },
+      "node_demo1_a": {
+        "id": "node_demo1_a",
+        "parent": "node_demo1_root",
+        "children": [],
+        "message": {
+          "id": "msg_demo1_a",
+          "author": {"role": "assistant"},
+          "content": {"content_type": "text", "parts": ["Branch A response"]},
+          "create_time": 1700000100,
+          "update_time": 1700000100
+        }
+      },
+      "node_demo1_b": {
+        "id": "node_demo1_b",
+        "parent": "node_demo1_root",
+        "children": [],
+        "message": {
+          "id": "msg_demo1_b",
+          "author": {"role": "assistant"},
+          "content": {"content_type": "text", "parts": ["Branch B response"]},
+          "create_time": 1700000200,
+          "update_time": 1700000200
+        }
+      }
+    }
+  },
+  {
+    "id": "demo_conv_2",
+    "title": "Demo: simple",
+    "create_time": 1700001000,
+    "update_time": 1700001200,
+    "default_model_slug": "gpt-4o-mini",
+    "current_node": "node_demo2_reply",
+    "mapping": {
+      "node_demo2_root": {
+        "id": "node_demo2_root",
+        "parent": null,
+        "children": ["node_demo2_reply"],
+        "message": {
+          "id": "msg_demo2_root",
+          "author": {"role": "user"},
+          "content": {"content_type": "text", "parts": ["What's 2+2?"]},
+          "create_time": 1700001000,
+          "update_time": 1700001000
+        }
+      },
+      "node_demo2_reply": {
+        "id": "node_demo2_reply",
+        "parent": "node_demo2_root",
+        "children": [],
+        "message": {
+          "id": "msg_demo2_reply",
+          "author": {"role": "assistant"},
+          "content": {"content_type": "text", "parts": ["4"]},
+          "create_time": 1700001100,
+          "update_time": 1700001100
+        }
+      }
+    }
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "run_id": "demo_run",
+  "created_at": "2025-12-22T15:57:01.108093Z",
+  "input_files": [
+    "demo/demo_conversations.json"
+  ],
+  "stats": {
+    "start_time": 1766419021.10759,
+    "node_children": 3,
+    "nodes": 5,
+    "messages": 5,
+    "conversations": 2,
+    "end_time": 1766419021.1080918,
+    "elapsed": 0.0005018711090087891
+  },
+  "version": "0.2.0"
+}

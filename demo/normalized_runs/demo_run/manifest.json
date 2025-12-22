@@ -1,0 +1,61 @@
+{
+  "run_id": "demo_run",
+  "output_dir": "demo/normalized_runs/demo_run",
+  "created_at": "2025-12-22T15:57:01.108093Z",
+  "log_file": "demo/normalized_runs/demo_run/parser.log",
+  "run_json": "demo/normalized_runs/demo_run/run.json",
+  "files": {
+    "conversations.jsonl": {
+      "path": "demo/normalized_runs/demo_run/conversations.jsonl",
+      "size_bytes": 973,
+      "records": 2
+    },
+    "nodes.jsonl": {
+      "path": "demo/normalized_runs/demo_run/nodes.jsonl",
+      "size_bytes": 1229,
+      "records": 5
+    },
+    "node_children.jsonl": {
+      "path": "demo/normalized_runs/demo_run/node_children.jsonl",
+      "size_bytes": 439,
+      "records": 3
+    },
+    "messages.jsonl": {
+      "path": "demo/normalized_runs/demo_run/messages.jsonl",
+      "size_bytes": 2825,
+      "records": 5
+    },
+    "links.jsonl": {
+      "path": "demo/normalized_runs/demo_run/links.jsonl",
+      "size_bytes": 0,
+      "records": 0
+    },
+    "attachments.jsonl": {
+      "path": "demo/normalized_runs/demo_run/attachments.jsonl",
+      "size_bytes": 0,
+      "records": 0
+    },
+    "tool_calls.jsonl": {
+      "path": "demo/normalized_runs/demo_run/tool_calls.jsonl",
+      "size_bytes": 0,
+      "records": 0
+    },
+    "tool_results.jsonl": {
+      "path": "demo/normalized_runs/demo_run/tool_results.jsonl",
+      "size_bytes": 0,
+      "records": 0
+    }
+  },
+  "stats": {
+    "conversations": 2,
+    "nodes": 5,
+    "messages": 5,
+    "links": 0,
+    "attachments": 0,
+    "tool_calls": 0,
+    "tool_results": 0,
+    "errors": 0,
+    "file_errors": 0,
+    "elapsed": 0.0005018711090087891
+  }
+}
