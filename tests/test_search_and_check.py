@@ -10,14 +10,10 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from ChatGPT_Export_parser import (  # noqa: E402
-    run_parse,
-    run_ingest,
-    run_search,
-    run_check,
-    run_export_conversation,
-    setup_logging,
-)
+from chatgpt_parser.cli.commands import run_parse, run_ingest, run_search
+from chatgpt_parser.db.maintenance import run_check
+from chatgpt_parser.core.exporter import run_export_conversation
+from chatgpt_parser.utils.logging import setup_logging
 
 
 def _make_conv(conv_id: str, text: str, ts: float = 1.0):
