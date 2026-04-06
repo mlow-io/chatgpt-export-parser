@@ -1,160 +1,167 @@
-# ChatGPT Export CLI – Revised Interface (draft)
+# ChatGPT Export CLI Spec
 
-This spec captures the short-term CLI surface and DB hooks we need (no GUI/semantic layer). It assumes the current parser/ingester foundations already in `ChatGPT_Export_parser.py`.
+This file describes the implemented CLI surface for the canonical ChatGPT archive.
 
-Note: this file is partly aspirational; not all config/log-format features described here are implemented in the current script.
+## Product Story
 
-## Global Behavior
-- Outputs are run-scoped: each `parse`/`parse-and-ingest` creates a run directory with JSONL, `run.json`, `manifest.json`, and `parser.log`.
-- Provenance: every DB row carries `run_id`; runs table mirrors the on-disk metadata.
-- Output controls: `--json` (machine-readable summary), `--quiet`, `--verbose`, `--log-format text|json`.
-- Config precedence: CLI flags > env vars (`CHATGPT_EXPORT_DB`, `CHATGPT_EXPORT_OUTPUT_ROOT`, etc.) > config file (`~/.chatgpt_export/config.toml` by default) > hardcoded defaults.
-- Config file shape (`config.toml`):
-  ```toml
-  [defaults]
-  db_path = "./chatgpt_export.db"
-  output_root = "./normalized_runs"
-  export_dir = "./exports"     # optional default for raw export files
-  log_format = "text"
-  ```
-- DB path must always be overrideable via `--db`; no global lock-in.
+The CLI does one primary thing:
 
-## Commands & Arguments
+- ingest ChatGPT exports into a canonical SQLite archive
 
-### parse
-Normalize export JSON → JSONL run dir.
-- Positional: `inputs...` (one or more export JSON files or `.zip` containing `conversations.json`).
-- Flags: `--output-root DIR` (default `./normalized_runs`), `--output-dir DIR` (must be empty unless `--force`), `--run-id ID`, `--force`, `--no-streaming` (streaming ON by default).
-- Output JSON (if `--json`):
-  ```json
-  {
-    "run_id": "2025-12-05T23-15-00Z",
-    "jsonl_dir": "./normalized_runs/2025-12-05T23-15-00Z",
-    "conversations": 128,
-    "messages": 3290,
-    "links": 410,
-    "attachments": 12,
-    "tool_calls": 7,
-    "tool_results": 7,
-    "elapsed_sec": 14.23
-  }
-  ```
+That archive:
 
-### ingest
-Load an existing JSONL run into SQLite.
-- Flags: `--jsonl-dir DIR` (required), `--db PATH` (required), `--mode skip_existing|overwrite` (default `skip_existing`), `--run-id ID` (override).
-- Behavior: inserts run metadata into `runs`; bulk inserts rows; optional truncate per-run on `overwrite`.
-- Output JSON:
-  ```json
-  { "status": "ingested", "db": "./chatgpt_export.db", "run_id": "..." }
-  ```
+- keeps full ChatGPT-native structure
+- dedupes overlapping exports
+- preserves run provenance
+- supports query, search, and export workflows
+
+## Global Options
+
+- `--json`
+- `--quiet`
+- `--verbose`
+
+## Commands
 
 ### parse-and-ingest
-Convenience: runs `parse`, then `ingest`.
-- Flags: union of `parse` + `ingest` (db/mode). Streaming ON by default; disable with `--no-streaming`.
-- Output JSON: same fields as `parse` plus `db` and `status: "completed"`.
 
-### search (FTS)
-Full-text search over messages (requires `message_fts`).
-- Flags: `--db PATH` (required), `--q QUERY` (required), `--role ROLE`, `--kind KIND`, `--conversation-id ID`, `--run-id ID`, `--limit N` (default 50), `--offset N` (default 0), `--format json|text`.
-- Output JSON: list of hits with `conversation_id`, `message_id`, `created_at`, `role`, `message_kind`, `snippet` (MATCH-highlight optional), `score` (optional).
+Standard ingest command.
+
+```bash
+python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./my_chats.db
+```
+
+Arguments:
+
+- `inputs...`
+- `--db PATH` required
+- `--run-id ID` optional
+- `--mode skip_existing`
+- `--no-streaming`
+
+Behavior:
+
+- reads one or more JSON or ZIP exports
+- parses conversations directly
+- merges them into the canonical archive
+- records run provenance in `runs`, `conversation_runs`, and `message_runs`
+
+### canonical-ingest
+
+Explicit alias of `parse-and-ingest`.
+
+Same flags, same behavior, same canonical archive output.
 
 ### query
-Structured queries without FTS.
-- Flags: `--db PATH`, `--type conversations|conversation_detail`, `--limit N`, `--conversation-id ID`, `--include-hidden true|false`, `--format json|text`, `--order-by FIELD` (optional).
-- `conversations` returns a list; `conversation_detail` returns `{ conversation, messages }` (ordered by `time_index`).
 
-### export-conversation / export-conversations
-Materialize conversations to Markdown/text (JSON option for single).
-- Single: `export-conversation --db PATH --conversation-id ID --format markdown|text|json --output FILE [--frontmatter]`
-- Batch: `export-conversations --db PATH --query "fts text" --limit N --format markdown|text --output-dir DIR [--frontmatter]`
-- Uses search/filters to pick IDs; exports main-path (or configurable) messages.
+```bash
+python3 ChatGPT_Export_parser.py query --db ./my_chats.db --type conversations --limit 10
+```
+
+Arguments:
+
+- `--db PATH`
+- `--type conversations|conversation_detail`
+- `--limit N`
+- `--conversation-id ID`
+- `--include-hidden true|false`
+- `--format json|text`
+- `--order-by FIELD`
+
+### search
+
+```bash
+python3 ChatGPT_Export_parser.py search --db ./my_chats.db --q "pizza"
+```
+
+Arguments:
+
+- `--db PATH`
+- `--q QUERY`
+- `--role ROLE`
+- `--kind KIND`
+- `--conversation-id ID`
+- `--run-id ID`
+- `--limit N`
+- `--offset N`
+- `--format json|text`
+
+### export-conversation
+
+```bash
+python3 ChatGPT_Export_parser.py export-conversation \
+  --db ./my_chats.db \
+  --conversation-id <UUID> \
+  --output out.md \
+  --frontmatter
+```
+
+Arguments:
+
+- `--db PATH`
+- `--conversation-id ID`
+- `--format markdown|text|json`
+- `--output FILE`
+- `--include-hidden true|false`
+- `--frontmatter`
+
+### export-conversations
+
+Batch export selected conversations.
+
+Arguments:
+
+- `--db PATH`
+- `--query TEXT`
+- `--limit N`
+- `--output-dir DIR`
+- `--format markdown|text`
+- `--include-hidden true|false`
+- `--frontmatter`
+
+### export-bundle
+
+Bundle recent conversations into one Markdown file.
+
+Arguments:
+
+- `--db PATH`
+- `--since-days N`
+- `--output-markdown FILE`
+- `--include-hidden true|false`
+- `--frontmatter`
 
 ### check
-Integrity validation.
-- Flags: `--db PATH`, `--format json|text`.
-- Validates FK-like relations (nodes↔messages, conversations.current_node_id in nodes), PK uniqueness, optional depth/main_path coherence.
-- Output JSON: `{ "ok": true }` or `{ "ok": false, "errors": [...] }`.
+
+Integrity validation for the canonical archive.
+
+Arguments:
+
+- `--db PATH`
+- `--format json|text`
 
 ### list-runs
-Enumerate runs.
-- Flags: `--db PATH`, `--format json|text`.
-- Output: rows from `runs` with `run_id`, `jsonl_dir`, `started_at`, `finished_at`, `input_files`, `stats`.
 
-### diff-runs
-Compare two runs by run_id.
-- Flags: `--db PATH`, `--run-a ID`, `--run-b ID`, `--format json|text`.
-- Output JSON: `{ "only_in_b": [...conversation_ids], "only_in_a": [...], "changed": [{ "conversation_id": "...", "message_count_a": 10, "message_count_b": 12 }] }`.
+List canonical ingest runs.
 
-### dump-db / restore-db
-- `dump-db --db PATH --output FILE.sql` (uses `sqlite3 .dump` or internal export).
-- `restore-db --input FILE.sql --db PATH` (creates/overwrites target DB).
+Arguments:
 
-### migrate
-Schema migrations keyed off `meta.schema_version`.
-- Flags: `--db PATH`, `--to-version N` (optional; defaults to latest).
-- Applies sequential SQL migrations; idempotent if already at target.
+- `--db PATH`
+- `--format json|text`
 
-## Logging
-- Default console: INFO (unless `--quiet` or `--json`).
-- File: `parser.log` inside run dir for parse; optional `--log-file PATH` for other commands.
-- `--log-format json` switches console/file to JSON logs (fields: `ts`, `level`, `msg`, `run_id`, `command`).
+### dump-db
 
-## SQL Starters (FTS + Meta)
+- `--db PATH`
+- `--output FILE.sql`
 
-Create FTS table (run during migrate/init):
-```sql
-CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5(
-  message_id UNINDEXED,
-  conversation_id UNINDEXED,
-  run_id UNINDEXED,
-  role,
-  text,
-  tokenize='unicode61'
-);
-```
+### restore-db
 
-Indexes helpful for queries:
-```sql
-CREATE INDEX IF NOT EXISTS idx_messages_conv_kind ON messages(run_id, conversation_id, message_kind);
-CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(run_id, conversation_id, time_index);
-CREATE INDEX IF NOT EXISTS idx_node_children_parent ON node_children(run_id, parent_node_id);
-CREATE INDEX IF NOT EXISTS idx_node_children_child ON node_children(run_id, child_node_id);
-```
+- `--input FILE.sql`
+- `--db PATH`
+- `--force`
 
-Meta table for schema versioning:
-```sql
-CREATE TABLE IF NOT EXISTS meta (
-  key TEXT PRIMARY KEY,
-  value TEXT
-);
-INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', '1'), ('created_at', datetime('now'));
-```
+## Notes
 
-Minimal migration sketch (example: version 1 → 2)
-```sql
-ALTER TABLE messages ADD COLUMN time_index INTEGER;
-ALTER TABLE messages ADD COLUMN message_kind TEXT;
--- If upgrading older DBs without run_id, add and backfill:
-ALTER TABLE conversations ADD COLUMN run_id TEXT;
-ALTER TABLE nodes ADD COLUMN run_id TEXT;
-ALTER TABLE messages ADD COLUMN run_id TEXT;
-ALTER TABLE links ADD COLUMN run_id TEXT;
-ALTER TABLE attachments ADD COLUMN run_id TEXT;
-ALTER TABLE tool_calls ADD COLUMN run_id TEXT;
-ALTER TABLE tool_results ADD COLUMN run_id TEXT;
-CREATE TABLE IF NOT EXISTS runs (...); -- see main schema
-UPDATE meta SET value='2' WHERE key='schema_version';
-```
-
-FTS ingest hook (during ingest for each message with text):
-```sql
-INSERT INTO message_fts(message_id, conversation_id, run_id, role, text)
-VALUES (?, ?, ?, ?, ?);
-```
-
-## Notes for Implementation
-- Keep ingestion order: JSONL → DB; FTS rows derive from `messages.text`.
-- Keep `run.json` authoritative for `run_id`, `input_files`, `stats`.
-- Don’t delete JSONL artifacts; `overwrite` mode only affects DB rows for a run.
-- Ensure `--json` outputs are stable and documented for agent consumption.
+- Different `--db` values let users build multiple independent canonical archives.
+- Provenance is retained even though the main archive is no longer run-scoped.
+- There is no separate first-class catalog workflow in the product story anymore.

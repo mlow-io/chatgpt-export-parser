@@ -1,170 +1,214 @@
-# ChatGPT Export Parser & SQLite Ingester
+# ChatGPT Export Parser
 
-**Liberate your data.** A robust, local-first CLI tool to parse, normalize, and ingest your ChatGPT data export into a structured, relational SQLite database.
+Local-first CLI for turning ChatGPT exports into one cumulative, canonical SQLite archive.
 
-[![Python](https://img.shields.io/badge/Python-3.8%2B-blue)](https://www.python.org/) [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT) [![Dependencies: None](https://img.shields.io/badge/Dependencies-Standard%20Lib%20Only-brightgreen)]()
+This repo now has one primary data story:
 
-## Why Use This?
+- ingest raw ChatGPT export JSON or ZIP files
+- merge them into a **canonical ChatGPT archive DB**
+- preserve **run provenance** without duplicating the logical conversation/message rows
+- keep ChatGPT-native structure (`conversations`, `messages`, `nodes`, `node_children`) so downstream readers stay simple
 
-The raw `conversations.json` from OpenAI is a deeply nested tree structure that is difficult to query or analyze. This tool transforms it into a **relational database** and **normalized JSONL files**, giving you:
+The canonical archive is the standard output. It is the database AtlasBench GPT should consume directly.
 
-*   **Full-Text Search:** Sub-second search across your entire history using SQLite's FTS5 engine.
-*   **Data Ownership:** Keep a local, queryable archive of your chats that doesn't depend on OpenAI's servers.
-*   **Analysis Ready:** SQL tables for `conversations`, `messages`, `tool_calls`, and `attachments` make data science easy.
-*   **Readable Exports:** Reconstruct readable Markdown threads (with frontmatter) from your database.
-*   **Diffing:** Track changes over time by ingesting multiple exports as distinct "runs".
+## What It Does
 
----
+- **Canonical ingest:** overlapping exports merge into one archive instead of creating duplicate conversation copies
+- **Full thread fidelity:** keeps ChatGPT-native conversation, message, and branch structure
+- **Run provenance:** each ingest still gets a `run_id`, stored in `runs`, `conversation_runs`, and `message_runs`
+- **FTS search:** search message text with SQLite FTS5
+- **Query and export:** inspect conversations, export them to Markdown/text/JSON, or bundle recent chats
+- **Multiple databases:** use any `--db` path you want; separate databases remain separate archives
 
 ## Quick Start
 
-This repository includes a **synthetic demo export** so you can test the pipeline immediately without using your own data.
+This repo includes synthetic demo data.
 
 ```bash
-# 1. Parse & Ingest the demo data
+# Build a canonical archive from the demo export
 python3 ChatGPT_Export_parser.py parse-and-ingest \
   demo/demo_conversations.json \
-  --db demo/demo_chatgpt_export.db \
-  --output-dir demo/normalized_runs/demo_run \
-  --run-id demo_run \
-  --force
+  --db demo/demo_chatgpt_canonical.db \
+  --run-id demo_run
 
-# 2. Search it
-python3 ChatGPT_Export_parser.py search --db demo/demo_chatgpt_export.db --q "Branch"
+# Search the canonical archive
+python3 ChatGPT_Export_parser.py search \
+  --db demo/demo_chatgpt_canonical.db \
+  --q "Branch"
 
-# 3. Export a conversation to Markdown
+# Export a conversation to Markdown
 python3 ChatGPT_Export_parser.py export-conversation \
-  --db demo/demo_chatgpt_export.db \
-  --conversation-id <UUID_FROM_ABOVE> \
+  --db demo/demo_chatgpt_canonical.db \
+  --conversation-id <UUID> \
   --output my_chat.md
 ```
 
----
+`parse-and-ingest` is the standard command. `canonical-ingest` remains as an explicit alias for the same workflow.
 
 ## Installation
 
-No `pip install` required. The entire logic is contained in a single file depending only on the Python Standard Library.
-
-1.  Clone the repository:
-    ```bash
-    git clone https://github.com/matthewb-io/chatgpt-export-parser.git
-    cd chatgpt-export-parser
-    ```
-2.  Ensure you have Python 3.8+ installed:
-    ```bash
-    python3 --version
-    ```
-
----
-
-## Detailed Usage
-
-The CLI is split into subcommands. Use `--help` on any command to see more options.
-
-### 1. Parse & Ingest (Recommended)
-
-The easiest way to import your data. It reads your export (JSON or ZIP), normalizes it to JSONL files (saved in `./normalized_runs/`), and loads it into SQLite.
+No third-party dependencies are required.
 
 ```bash
-# Process a raw JSON file
-python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/conversations.json --db my_chats.db
-
-# Process directly from the downloaded ZIP
-python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.zip --db my_chats.db
+git clone https://github.com/matthewb-io/chatgpt-export-parser.git
+cd chatgpt-export-parser
+python3 --version
 ```
 
-### 2. Search & Query
+## Standard Workflow
 
-**Full-Text Search (FTS):**
-Search across all message content efficiently.
+### 1. Ingest one or more exports into a canonical archive
+
+```bash
+python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/conversations.json \
+  --db my_chats.db
+
+python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.zip \
+  --db my_chats.db
+
+python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/october.json /path/to/november.json \
+  --db my_chats.db \
+  --run-id 2026-04-06T12-00-00Z
+```
+
+Behavior:
+
+- the archive dedupes canonical conversations/messages across overlapping exports
+- branches inside a conversation are preserved as distinct nodes/edges
+- each ingest run is still recorded for provenance
+- choosing a different `--db` path creates or extends a different canonical archive
+
+### 2. Search
+
 ```bash
 python3 ChatGPT_Export_parser.py search --db my_chats.db --q "quantum computing"
 ```
 
-**Structured Query:**
-Get metadata about conversations.
+Optional filters:
+
+- `--role`
+- `--kind`
+- `--conversation-id`
+- `--run-id`
+
+### 3. Query
+
 ```bash
-# List most recent 10 conversations
 python3 ChatGPT_Export_parser.py query --db my_chats.db --type conversations --limit 10
 
-# Get full details of a specific conversation as JSON
 python3 ChatGPT_Export_parser.py query \
-    --db my_chats.db \
-    --type conversation_detail \
-    --conversation-id <UUID> \
-    --format json
+  --db my_chats.db \
+  --type conversation_detail \
+  --conversation-id <UUID> \
+  --format json
 ```
 
-### 3. Export to Markdown
+### 4. Export
 
-Turn your database entries back into readable files.
-
-**Single Conversation:**
 ```bash
 python3 ChatGPT_Export_parser.py export-conversation \
-    --db my_chats.db \
-    --conversation-id <UUID> \
-    --output interview_prep.md \
-    --frontmatter
-```
+  --db my_chats.db \
+  --conversation-id <UUID> \
+  --output conversation.md \
+  --frontmatter
 
-**Bulk Export (via Search):**
-Export all conversations matching a search query.
-```bash
 python3 ChatGPT_Export_parser.py export-conversations \
-    --db my_chats.db \
-    --query "project alpha" \
-    --output-dir ./project_alpha_chats \
-    --frontmatter
+  --db my_chats.db \
+  --query "postgres" \
+  --limit 10 \
+  --output-dir ./exports
 ```
 
-### 4. Advanced: Run Management
-
-The tool tracks every ingestion as a "run". This allows you to import data over time and see what changed.
+### 5. Validate and inspect provenance
 
 ```bash
-# List all ingested runs
+python3 ChatGPT_Export_parser.py check --db my_chats.db --format json
 python3 ChatGPT_Export_parser.py list-runs --db my_chats.db
-
-# Diff two runs to see what was added/removed/changed
-python3 ChatGPT_Export_parser.py diff-runs --db my_chats.db --run-a <OLD_RUN_ID> --run-b <NEW_RUN_ID>
 ```
 
----
+`list-runs` is now provenance inspection for the canonical archive, not a separate legacy mode.
 
-## Data Model
+## Canonical Data Model
 
-The data is normalized into a relational schema (Schema v3). Key tables include:
+The archive keeps ChatGPT-native tables:
 
-*   **`conversations`**: Metadata (title, create time, UUID).
-*   **`messages`**: The actual content. Includes `role` (user/assistant) and `message_kind`.
-*   **`nodes`**: Represents the tree structure of the conversation.
-*   **`node_children`**: Explicit graph edges for fast traversal of branching conversations (edited messages).
-*   **`tool_calls` & `tool_results`**: Structured data for Code Interpreter, DALL-E, etc.
+- `conversations`
+- `messages`
+- `nodes`
+- `node_children`
+- `links`
+- `attachments`
+- `tool_calls`
+- `tool_results`
+- `message_fts`
 
-**Message Kinds:**
-*   `user_visible_user`: Standard user prompts.
-*   `user_visible_assistant`: Standard GPT responses.
-*   `system_context`: Hidden system prompts.
-*   `tool_call` / `tool_result`: Function execution logs.
-*   `internal_reasoning`: "Thought" chains (e.g., from o1 models).
+It also adds canonical provenance tables:
 
----
+- `runs`
+- `conversation_runs`
+- `message_runs`
+
+Important properties:
+
+- canonical identity is conversation/message based, not `(run_id, id)` based
+- `run_id` is preserved for provenance but is not the primary identity
+- later exports can supersede earlier truncated snapshots without duplicating the logical conversation row
+- branch structure is preserved via `nodes` and `node_children`
+
+Useful derived conversation fields also live on the canonical `conversations` table:
+
+- `message_count`
+- `message_count_main_path`
+- `earliest_message_at`
+- `latest_message_at`
+- role counts
+- `keyword_text`
+- `summary_text`
+
+## Provenance Model
+
+Each ingest still creates a run record.
+
+- `runs`: one row per ingest invocation
+- `conversation_runs`: which canonical conversations were seen in that run, plus the per-run snapshot metadata
+- `message_runs`: which canonical messages were seen in that run
+
+This gives you historical visibility without making the main archive run-scoped.
+
+## Why This Replaced The Older Approach
+
+The repo used to carry:
+
+- a run-scoped relational DB as the main output
+- a separate lightweight catalog DB
+
+Those are no longer the primary product story.
+
+For a normal ChatGPT-history browser, the right default is:
+
+- one cumulative canonical archive
+- no duplicate conversations from overlapping exports
+- full thread content and branch fidelity
+- run provenance preserved separately
 
 ## Data Safety
 
-*   **Local First:** Your data never leaves your machine.
-*   **Git Ignore:** The repository is configured to ignore `conversations.json`, `*.db`, and `normalized_runs/` to prevent accidental commits of personal data.
-*   **Demo Data:** Only the synthetic data in `demo/` is tracked.
-
----
+- Local-first only
+- `conversations.json`, `*.db`, `generated/`, and other local artifacts are gitignored
+- only synthetic demo content in `demo/` should be committed
 
 ## Development & Testing
-
-Run the test suite to ensure everything is working correctly:
 
 ```bash
 python3 -m unittest discover -s tests
 ```
 
-See `GEMINI.md` for deep architectural details and `TODOS.md` for the roadmap.
+Useful smoke checks:
+
+```bash
+python3 ChatGPT_Export_parser.py parse-and-ingest demo/demo_conversations.json --db demo/demo_chatgpt_canonical.db --run-id demo_run
+python3 ChatGPT_Export_parser.py query --db demo/demo_chatgpt_canonical.db --type conversations --limit 2 --format json
+python3 ChatGPT_Export_parser.py search --db demo/demo_chatgpt_canonical.db --q "branch" --format json
+```
+
+For deeper schema details, see [SCHEMA_AND_SPEC.md](SCHEMA_AND_SPEC.md) and [CLI_SPEC.md](CLI_SPEC.md).

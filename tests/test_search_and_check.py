@@ -3,14 +3,14 @@ import os
 import sys
 import tempfile
 import unittest
+from contextlib import closing, redirect_stdout
 from io import StringIO
-from types import SimpleNamespace
-from contextlib import redirect_stdout, closing
 from pathlib import Path
+from types import SimpleNamespace
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from chatgpt_parser.cli.commands import run_parse, run_ingest, run_search
+from chatgpt_parser.cli.commands import run_canonical_ingest, run_search
 from chatgpt_parser.db.maintenance import run_check
 from chatgpt_parser.core.exporter import run_export_conversation
 from chatgpt_parser.utils.logging import setup_logging
@@ -95,39 +95,26 @@ def _make_branch_conv(conv_id: str):
 
 
 class SearchAndCheckTests(unittest.TestCase):
-    def _parse_and_ingest(self, sample):
+    def _canonical_ingest(self, sample):
         logger = setup_logging(None, verbose=False)
         tmpdir = tempfile.mkdtemp()
         export_path = os.path.join(tmpdir, "export.json")
-        with open(export_path, "w", encoding="utf-8") as f:
-            json.dump(sample, f)
-
-        parse_args = SimpleNamespace(
-            inputs=[export_path],
-            output_dir=None,
-            output_root=tmpdir,
-            run_id="test_run",
-            force=True,
-            streaming=False,
-        )
-        res = run_parse(parse_args, logger)
-        self.assertIsNotNone(res)
-        out_dir, run_id = res
+        with open(export_path, "w", encoding="utf-8") as handle:
+            json.dump(sample, handle)
 
         db_path = os.path.join(tmpdir, "db.sqlite")
-        ingest_args = SimpleNamespace(
-            jsonl_dir=out_dir,
+        args = SimpleNamespace(
+            inputs=[export_path],
             db=db_path,
-            mode="overwrite",
-            run_id=run_id,
+            run_id="test_run",
+            mode="skip_existing",
+            streaming=False,
         )
-        run_ingest(ingest_args, logger)
-        return db_path, run_id
+        run_canonical_ingest(args, logger)
+        return db_path
 
     def test_search_fts(self):
-        db_path, run_id = self._parse_and_ingest(
-            [_make_conv("conv1", "I like pizza"), _make_conv("conv2", "no pizza here")]
-        )
+        db_path = self._canonical_ingest([_make_conv("conv1", "I like pizza"), _make_conv("conv2", "no pizza here")])
         logger = setup_logging(None, verbose=False)
         import sqlite3
         with closing(sqlite3.connect(db_path)) as conn:
@@ -135,9 +122,10 @@ class SearchAndCheckTests(unittest.TestCase):
             cur.execute("SELECT COUNT(*) FROM message_fts")
             count = cur.fetchone()[0]
             cur.execute("SELECT conversation_id FROM message_fts WHERE message_fts MATCH 'pizza'")
-            direct = {r[0] for r in cur.fetchall()}
+            direct = {row[0] for row in cur.fetchall()}
         self.assertGreater(count, 0)
         self.assertEqual(direct, {"conv1", "conv2"})
+
         buf = StringIO()
         search_args = SimpleNamespace(
             db=db_path,
@@ -153,21 +141,19 @@ class SearchAndCheckTests(unittest.TestCase):
         with redirect_stdout(buf):
             run_search(search_args, logger)
         output = json.loads(buf.getvalue())
-        conv_ids = {row["conversation_id"] for row in output}
-        self.assertEqual(conv_ids, {"conv1", "conv2"})
+        self.assertEqual({row["conversation_id"] for row in output}, {"conv1", "conv2"})
 
     def test_check_ok(self):
-        db_path, _ = self._parse_and_ingest([_make_conv("convA", "hello world")])
+        db_path = self._canonical_ingest([_make_conv("convA", "hello world")])
         logger = setup_logging(None, verbose=False)
         buf = StringIO()
-        check_args = SimpleNamespace(db=db_path, format="json")
         with redirect_stdout(buf):
-            run_check(check_args, logger)
-        res = json.loads(buf.getvalue())
-        self.assertTrue(res["ok"])
+            run_check(SimpleNamespace(db=db_path, format="json"), logger)
+        result = json.loads(buf.getvalue())
+        self.assertTrue(result["ok"])
 
     def test_export_conversation(self):
-        db_path, _ = self._parse_and_ingest([_make_conv("convX", "export me")])
+        db_path = self._canonical_ingest([_make_conv("convX", "export me")])
         logger = setup_logging(None, verbose=False)
         buf = StringIO()
         export_args = SimpleNamespace(
@@ -176,6 +162,7 @@ class SearchAndCheckTests(unittest.TestCase):
             format="markdown",
             output=None,
             include_hidden="false",
+            frontmatter=False,
         )
         with redirect_stdout(buf):
             run_export_conversation(export_args, logger)
@@ -183,9 +170,8 @@ class SearchAndCheckTests(unittest.TestCase):
         self.assertIn("export me", content)
         self.assertIn("convX", content)
 
-    def test_node_children_ingest(self):
-        db_path, _ = self._parse_and_ingest([_make_branch_conv("conv_branch")])
-        logger = setup_logging(None, verbose=False)
+    def test_node_children_preserved(self):
+        db_path = self._canonical_ingest([_make_branch_conv("conv_branch")])
         import sqlite3
         with closing(sqlite3.connect(db_path)) as conn:
             cur = conn.cursor()

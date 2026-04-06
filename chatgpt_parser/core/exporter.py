@@ -4,7 +4,7 @@ import os
 import sqlite3
 from typing import Any, Dict, List, Optional
 
-from ..db.manager import connect_db
+from ..db.common import connect_db
 
 def format_messages_markdown(conv: Dict[str, Any],
                              messages: List[Dict[str, Any]],
