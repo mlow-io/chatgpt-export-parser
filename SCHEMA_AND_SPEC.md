@@ -1,129 +1,256 @@
-# ChatGPT Export Parser – Data Model & CLI Spec (2025-12)
+# ChatGPT Export Parser – Canonical Schema & CLI Notes
 
-This document is the authoritative schema and CLI specification for the current parser/ingester. All outputs are run-scoped and machine-consumable.
+This repo now standardizes on one SQLite output:
 
-## Run Outputs & Artifacts
-- Per-run directory (default `./normalized_runs/<run_id>/`):
-  - JSONL files: `conversations.jsonl`, `nodes.jsonl`, `node_children.jsonl`, `messages.jsonl`, `links.jsonl`, `attachments.jsonl`, `tool_calls.jsonl`, `tool_results.jsonl`
-  - `run.json` (metadata: run_id, created_at, input_files, stats, version)
-  - `manifest.json` (paths, sizes, record counts, log path, stats)
-  - `parser.log` (detailed log)
-- Ingested into SQLite (`--db`), mirroring JSONL schema plus `runs` and `meta`.
-- FTS: `message_fts` (FTS5) populated on ingest from `messages.text`.
+- the **canonical ChatGPT archive DB**
+
+The archive is ChatGPT-native and cumulative:
+
+- logical conversation/message identity is canonical
+- `run_id` is preserved for provenance, but not used as the primary identity
+- overlapping exports dedupe and merge into one archive
+- branch structure stays explicit through `nodes` and `node_children`
+
+## Canonical Archive Properties
+
+`parse-and-ingest` and `canonical-ingest` both write the same DB shape.
+
+Key rules:
+
+- one logical row per canonical conversation
+- one logical row per canonical message
+- run provenance stored separately in dedicated tables
+- later exports can supersede older truncated snapshots
+- different `--db` targets produce different canonical archives
 
 ## Common Conventions
-- Every row has `run_id` (TEXT) for provenance.
-- Timestamps: ISO 8601 UTC (`...Z`).
-- JSON objects/lists are stored as JSON strings in SQLite.
-- `message_kind`: derived enum (`user_visible_user`, `user_visible_assistant`, `system_context`, `internal_reasoning`, `tool_call`, `tool_result`, `unknown`).
-- `time_index`: per-conversation chronological index.
 
-## JSONL / SQLite Schemas
+- timestamps are ISO 8601 UTC
+- JSON objects/lists are stored as JSON strings in SQLite
+- every major row still carries `run_id` for provenance/debuggability
+- `message_kind` is derived as one of:
+  - `user_visible_user`
+  - `user_visible_assistant`
+  - `system_context`
+  - `internal_reasoning`
+  - `tool_call`
+  - `tool_result`
+  - `unknown`
+
+## Tables
 
 ### runs
-- `run_id` PK, `jsonl_dir`, `started_at`, `finished_at`, `input_files` (JSON), `stats` (JSON)
+
+One row per ingest invocation.
+
+- `run_id` PRIMARY KEY
+- `started_at`
+- `finished_at`
+- `input_files` JSON
+- `stats` JSON
 
 ### conversations
-- `run_id`, `id`, `source_id`, `title`, `created_at`, `updated_at`
-- `default_model`, `models_used` (list)
-- `is_archived`, `is_starred`, `current_node_id`
-- `message_count`, `safe_url_count`, `blocked_url_count`
-- `metadata` (JSON), `source_file`
+
+Canonical conversation rows.
+
+- `id` PRIMARY KEY
+- `run_id`
+- `source_id`
+- `title`
+- `created_at`
+- `updated_at`
+- `earliest_message_at`
+- `latest_message_at`
+- `default_model`
+- `models_used`
+- `is_archived`
+- `is_starred`
+- `current_node_id`
+- `message_count`
+- `message_count_main_path`
+- role counts
+- `safe_url_count`
+- `blocked_url_count`
+- `summary_text`
+- `keyword_text`
+- `metadata`
+- `source_file`
+
+### conversation_runs
+
+Per-run conversation snapshots and provenance.
+
+- `run_id`
+- `conversation_id`
+- snapshot metadata such as message counts and timestamps
+- `imported_at`
+- `is_canonical_snapshot`
 
 ### nodes
-- `run_id`, `id`, `conversation_id`
-- `parent_id`, `children_ids` (list)
+
+Canonical conversation graph nodes.
+
+- `conversation_id`
+- `id`
+- `run_id`
+- `parent_id`
 - `message_id`
-- `is_root`, `is_in_main_path`
-- `depth`, `main_path_index`
+- `is_root`
+- `is_in_main_path`
+- `depth`
+- `main_path_index`
 
 ### node_children
-- `run_id`, `conversation_id`
-- `parent_node_id`, `child_node_id`, `child_index`
+
+Explicit branch edges.
+
+- `conversation_id`
+- `parent_node_id`
+- `child_node_id`
+- `child_index`
+- `run_id`
 
 ### messages
-- `run_id`, `id`, `node_id`, `conversation_id`
-- `role`, `author_name`, `recipient`, `channel`
-- `content_type`, `text`, `raw_content` (JSON)
-- `created_at`, `updated_at`
-- `is_hidden`, `hidden_reason`
-- `is_in_main_path`, `main_path_index`, `depth`
-- `model`, `metadata` (JSON)
-- `time_index` (int), `message_kind` (enum)
+
+Canonical messages.
+
+- `conversation_id`
+- `id`
+- `run_id`
+- `node_id`
+- `role`
+- `author_name`
+- `recipient`
+- `channel`
+- `content_type`
+- `text`
+- `raw_content`
+- `created_at`
+- `updated_at`
+- `is_hidden`
+- `hidden_reason`
+- `is_in_main_path`
+- `main_path_index`
+- `depth`
+- `model`
+- `metadata`
+- `time_index`
+- `message_kind`
+
+### message_runs
+
+Per-run message provenance.
+
+- `run_id`
+- `conversation_id`
+- `message_id`
+- `created_at`
+- `imported_at`
 
 ### links
-- `run_id`, `id`, `conversation_id`, `message_id`
-- `source` (message_text, safe_url, blocked_url, etc.)
-- `url`, `display_text`, `position_start`, `position_end`
-- `scheme`, `domain`, `path`, `query`
-- `kind`, `metadata`
+
+- `id`
+- `conversation_id`
+- `message_id`
+- `run_id`
+- `source`
+- `url`
+- `display_text`
+- `position_start`
+- `position_end`
+- `scheme`
+- `domain`
+- `path`
+- `query`
+- `kind`
+- `metadata`
 
 ### attachments
-- `run_id`, `id`, `conversation_id`, `message_id`
-- `type`, `filename`, `mime_type`, `filesize_bytes`, `source_ref`
-- `metadata` (e.g., dimensions)
+
+- `id`
+- `conversation_id`
+- `message_id`
+- `run_id`
+- `type`
+- `filename`
+- `mime_type`
+- `filesize_bytes`
+- `source_ref`
+- `metadata`
 
 ### tool_calls
-- `run_id`, `id`, `conversation_id`, `message_id`
-- `tool_name`, `call_index`
-- `arguments_json` (parsed), `raw_arguments`, `metadata`
+
+- `id`
+- `conversation_id`
+- `message_id`
+- `run_id`
+- `tool_name`
+- `call_index`
+- `arguments_json`
+- `raw_arguments`
+- `metadata`
 
 ### tool_results
-- `run_id`, `id`, `conversation_id`, `message_id`, `tool_call_id`
-- `result_json`, `raw_result`, `metadata`
 
-### meta (DB only)
-- `key` PK, `value` (includes `schema_version`)
+- `id`
+- `conversation_id`
+- `message_id`
+- `tool_call_id`
+- `run_id`
+- `result_json`
+- `raw_result`
+- `metadata`
 
-### message_fts (FTS5)
-- `message_id`, `conversation_id`, `run_id`, `role`, `text`
+### message_fts
 
-## CLI Surface (Current)
-- parse: JSON/zip → JSONL run dir (streaming ON by default; `--no-streaming`; zip supported)
-- ingest: JSONL → SQLite (`--mode skip_existing|overwrite`)
-- parse-and-ingest: parse then ingest
-- query: list/detail
-- search: FTS over messages (role/kind/conversation/run filters)
-- export-conversation / export-conversations: markdown/text/json; optional `--frontmatter`
-- export-bundle: one markdown with TOC (optional HTML/PDF via pandoc + PDF engine), optional `--frontmatter`, `--css`, `--pdf-engine`
-- check: integrity
-- list-runs / diff-runs
-- dump-db / restore-db
-- migrate: schema migrations (currently schema_version=3: adds `node_children`, enables FK constraints, rebuilds FTS)
+SQLite FTS5 table over canonical message text.
 
-## Run Metadata Examples
-`run.json`:
-```json
-{
-  "run_id": "2025-12-05T13-00-15Z",
-  "created_at": "2025-12-05T13:00:15Z",
-  "input_files": ["conversations.json"],
-  "stats": { "conversations": 1104, "messages": 41650, "errors": 0 },
-  "version": "0.2.0"
-}
-```
-`manifest.json`:
-```json
-{
-  "run_id": "2025-12-05T13-00-15Z",
-  "output_dir": "./normalized_runs/2025-12-05T13-00-15Z",
-  "created_at": "2025-12-05T13:00:15Z",
-  "log_file": "./normalized_runs/2025-12-05T13-00-15Z/parser.log",
-  "run_json": "./normalized_runs/2025-12-05T13-00-15Z/run.json",
-  "files": {
-    "conversations.jsonl": { "path": "...", "size_bytes": 123, "records": 1104 },
-    "messages.jsonl": { "path": "...", "size_bytes": 456, "records": 41650 }
-  },
-  "stats": { "conversations": 1104, "messages": 41650, "errors": 0, "elapsed": 4.04 }
-}
-```
+- `message_id`
+- `conversation_id`
+- `run_id`
+- `role`
+- `text`
 
-## Export Formatting
-- Markdown exports (single/batch/bundle) render messages with fenced code blocks to avoid HTML/TeX bleed; optional YAML frontmatter (`--frontmatter`).
-- Bundled exports embed default CSS; HTML/PDF via pandoc if available; PDF requires a PDF engine (wkhtmltopdf/weasyprint/prince/chrome/pdflatex).
+### meta
 
-## Defaults & Behaviors
-- Streaming parse ON by default; disable with `--no-streaming`.
-- Zip inputs supported (reads `conversations.json` inside).
-- `run_id` auto-generated if not provided; outputs live under `./normalized_runs/<run_id>/` by default.
-- Logging: stdout INFO unless `--quiet`/`--json`; file logs in run dir for parse/parse-and-ingest.
+- `key`
+- `value`
+
+## CLI Surface
+
+### Standard ingest
+
+`parse-and-ingest`
+
+- input: one or more ChatGPT export JSON or ZIP files
+- output: canonical archive DB
+- required: `--db`
+- optional: `--run-id`
+- optional: `--mode skip_existing`
+- optional: `--no-streaming`
+
+### Explicit alias
+
+`canonical-ingest`
+
+Same behavior and flags as `parse-and-ingest`.
+
+### Query/search/export
+
+- `query`
+- `search`
+- `export-conversation`
+- `export-conversations`
+- `export-bundle`
+- `check`
+- `list-runs`
+- `dump-db`
+- `restore-db`
+
+## Canonical Notes
+
+- The canonical archive is the preferred and standard DB shape.
+- `list-runs` remains useful because provenance is still real, just no longer the primary data model.
+- You can keep multiple canonical archives simply by choosing different `--db` paths.
+- Branches are not deduped away. Branch/node structure inside a conversation remains intact.
+- Successive overlapping exports dedupe only where they represent the same logical conversation/message identity.

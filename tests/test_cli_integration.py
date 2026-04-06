@@ -3,15 +3,15 @@ import os
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
-from io import StringIO
-from contextlib import redirect_stdout, closing
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from chatgpt_parser.cli.commands import run_parse, run_ingest
+from chatgpt_parser.cli.commands import run_canonical_ingest
 from chatgpt_parser.utils.logging import setup_logging
+
 
 def _make_simple_conv(conv_id="conv1"):
     node_id = f"node_{conv_id}"
@@ -37,56 +37,72 @@ def _make_simple_conv(conv_id="conv1"):
         },
     }
 
+
 class CLIIntegrationTests(unittest.TestCase):
-    def test_parse_and_ingest_flow(self):
-        """Simulate the parse-and-ingest logic from main.py"""
+    def test_parse_and_ingest_standard_flow(self):
         sample = [_make_simple_conv("integration_test")]
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 1. Prepare Input
             export_path = os.path.join(tmpdir, "export.json")
-            with open(export_path, "w", encoding="utf-8") as f:
-                json.dump(sample, f)
-            
-            # 2. Setup Args mimicking main.py structure
+            with open(export_path, "w", encoding="utf-8") as handle:
+                json.dump(sample, handle)
+
             db_path = os.path.join(tmpdir, "integration.db")
             args = SimpleNamespace(
                 command="parse-and-ingest",
                 inputs=[export_path],
-                output_dir=None,
-                output_root=tmpdir,
-                run_id="integration_run",
-                force=True,
-                streaming=False,
                 db=db_path,
-                mode="overwrite",
-                jsonl_dir=None # Will be filled by parse result
+                run_id="integration_run",
+                mode="skip_existing",
+                streaming=False,
             )
             logger = setup_logging(None, verbose=False)
 
-            # 3. Run Parse
-            res = run_parse(args, logger)
-            self.assertIsNotNone(res)
-            out_dir, run_id = res
-            self.assertEqual(run_id, "integration_run")
-            
-            # 4. Inject jsonl_dir and Run Ingest
-            args.jsonl_dir = out_dir
-            run_ingest(args, logger)
+            run_canonical_ingest(args, logger)
 
-            # 5. Verify DB Content
             import sqlite3
             with closing(sqlite3.connect(db_path)) as conn:
                 cur = conn.cursor()
-                cur.execute("SELECT id FROM conversations")
+                cur.execute("SELECT id, run_id, message_count FROM conversations")
                 rows = cur.fetchall()
-                self.assertEqual(len(rows), 1)
-                self.assertEqual(rows[0][0], "integration_test")
-                
+                self.assertEqual(rows, [("integration_test", "integration_run", 1)])
+
                 cur.execute("SELECT run_id FROM runs")
                 runs = cur.fetchall()
-                self.assertEqual(len(runs), 1)
-                self.assertEqual(runs[0][0], "integration_run")
+                self.assertEqual(runs, [("integration_run",)])
+
+    def test_explicit_canonical_alias_flow(self):
+        sample = [_make_simple_conv("canonical_test")]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_path = os.path.join(tmpdir, "export.json")
+            with open(export_path, "w", encoding="utf-8") as handle:
+                json.dump(sample, handle)
+
+            db_path = os.path.join(tmpdir, "canonical.db")
+            args = SimpleNamespace(
+                command="canonical-ingest",
+                inputs=[export_path],
+                db=db_path,
+                run_id="canonical_run",
+                mode="skip_existing",
+                streaming=False,
+            )
+            logger = setup_logging(None, verbose=False)
+
+            run_canonical_ingest(args, logger)
+
+            import sqlite3
+            with closing(sqlite3.connect(db_path)) as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id, run_id, message_count FROM conversations")
+                rows = cur.fetchall()
+                self.assertEqual(rows, [("canonical_test", "canonical_run", 1)])
+
+                cur.execute("SELECT run_id FROM runs")
+                runs = cur.fetchall()
+                self.assertEqual(runs, [("canonical_run",)])
+
 
 if __name__ == "__main__":
     unittest.main()
