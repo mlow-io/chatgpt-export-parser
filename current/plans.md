@@ -6,15 +6,11 @@
 ## Current Status
 
 - Mode: `repair-and-continue`
-- Current frontier: establish the long-horizon control stack, baseline the suite, and drive an evidence-backed repair plan off repo reality rather than stale claims.
-- Repo state summary: the repo is small, runnable, and testable; canonical ingest is the product center; the current unittest suite passes; docs and tests do not yet cover the full operational surface evenly.
-- Repo state summary: the repo is small, runnable, and testable; canonical ingest is the product center; the unittest suite has been expanded and passes cleanly without SQLite connection warnings; several operational command edges have already been hardened during the regression pass.
-- Repo state summary: the repo is small, runnable, and testable; the suite now covers richer canonical invariants including snapshot ownership, extraction of links/attachments/tool rows, ZIP/streaming ingest parity, and deeper integrity checks; docs/specs still need to be brought in line with the verified behavior.
+- Current frontier: horizon complete; future work should build from the expanded suite and verified canonical-archive contract rather than reopening foundational uncertainty.
+- Repo state summary: the repo is small, runnable, and testable; the suite covers command-surface behavior, richer canonical invariants, ZIP/streaming parity, dump/restore round-trips, and expanded integrity checks; docs/specs have been aligned to the verified implementation.
 - Biggest risks right now:
-  - schema/docs drift creates false confidence
-  - the large canonical ingest module makes subtle regressions easy
-  - validation depth is too shallow for the archive’s invariants
-  - some existing CLI commands are lightly tested despite being user-facing
+  - future real-world export oddities may still expose sparse metadata or unusual graph shapes
+  - the canonical ingest path remains the highest-risk area for future regressions even after refactoring
 
 ## Verification Checklist
 
@@ -23,11 +19,12 @@ Core commands to keep current:
 - [ ] lint command verified
 - [ ] typecheck command verified
 - [x] test command verified: `python3 -m unittest discover -s tests`
-- [x] any repo-specific validation command verified: demo CLI smoke workflow completed for ingest, query, search, export-conversation, check, and list-runs
+- [x] any repo-specific validation command verified: demo CLI smoke workflow completed for ingest, query, search, export-conversation, check, list-runs, dump-db, and restore-db
 
 Last verified:
 - 2026-04-15: `python3 -m unittest discover -s tests`
 - 2026-04-15: demo smoke workflow against a temporary DB built from `demo/demo_conversations.json`
+- 2026-04-15: clean-room workflow verified across ingest, query, search, export-conversation, export-conversations, export-bundle, check, list-runs, dump-db, and restore-db
 
 Notes:
 - There is no dedicated build, lint, or typecheck command currently defined in repo docs or config. If such commands are added during the horizon, update this checklist and validate them.
@@ -231,12 +228,7 @@ Verification commands:
 - Standard-library-only Python is a deliberate repo constraint.
 
 ### Known drift or weak spots
-- Specs describe at least one field not present in the live schema (`message_runs.created_at`).
-- `canonical_manager.py` still concentrates more ingest behavior than is ideal, even with improved coverage.
-- Public docs/spec files still lag behind the now-verified command and validation behavior.
-- Validation is narrower than the data model’s actual complexity.
-- Docs/specs have not yet been updated to reflect the dump/restore FTS repair, safe `order-by` behavior, or the plain-text export contract.
-- Demo/operator workflows currently require inspecting actual conversation IDs from query output or fixture data; the docs should make the end-to-end demo path explicit.
+- Remaining weak spots are mostly future-facing rather than active horizon blockers: more malformed exports, more sparse metadata cases, and more unusual node graph shapes.
 
 ### Intended next-state evolution
 - Keep the same product story and command family.
@@ -316,3 +308,13 @@ Verification commands:
     Split `ingest_conversation()` into named helper stages for message collection, conversation-row assembly, node upserts, edge upserts, and message upserts.
   - Why:
     The function had become the main concentration point for canonical ingest behavior, which made future correctness work riskier than necessary.
+- 2026-04-15 / Milestone 07:
+  - Decision:
+    Update README and spec docs only after the clean-room workflow and expanded test suite were both green.
+  - Why:
+    The public contract should trail verified behavior, not lead it.
+- 2026-04-15 / Milestone 07:
+  - Decision:
+    Treat the horizon as complete after a clean-room archive round-trip matched conversations, messages, and FTS search hits before and after restore.
+  - Why:
+    That exercised the full canonical archive workflow, including the repaired dump/restore path.

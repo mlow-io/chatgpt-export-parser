@@ -39,7 +39,7 @@ python3 ChatGPT_Export_parser.py search \
 # Export a conversation to Markdown
 python3 ChatGPT_Export_parser.py export-conversation \
   --db demo/demo_chatgpt_canonical.db \
-  --conversation-id <UUID> \
+  --conversation-id demo_conv_1 \
   --output my_chat.md
 ```
 
@@ -103,6 +103,12 @@ python3 ChatGPT_Export_parser.py query \
   --format json
 ```
 
+Notes:
+
+- `query --type conversations` accepts `--order-by COLUMN [ASC|DESC]`
+- supported `--order-by` columns are conversation columns such as `created_at`, `updated_at`, `latest_message_at`, `message_count`, and related count fields
+- invalid `--order-by` values are rejected instead of being interpolated directly into SQL
+
 ### 4. Export
 
 ```bash
@@ -119,6 +125,12 @@ python3 ChatGPT_Export_parser.py export-conversations \
   --output-dir ./exports
 ```
 
+Format behavior:
+
+- `--format markdown` renders Markdown
+- `--format text` renders plain text
+- `--format json` emits a conversation-plus-messages JSON payload for `export-conversation`
+
 ### 5. Validate and inspect provenance
 
 ```bash
@@ -127,6 +139,17 @@ python3 ChatGPT_Export_parser.py list-runs --db my_chats.db
 ```
 
 `list-runs` is now provenance inspection for the canonical archive, not a separate legacy mode.
+
+`check` verifies more than orphan records. It also validates canonical counts, graph edges, FTS coverage, and canonical snapshot markers.
+
+### 6. Dump and restore
+
+```bash
+python3 ChatGPT_Export_parser.py dump-db --db my_chats.db --output my_chats.sql
+python3 ChatGPT_Export_parser.py restore-db --input my_chats.sql --db restored_chats.db
+```
+
+The dump/restore flow preserves the archive including the FTS-backed search surface.
 
 ## Canonical Data Model
 
@@ -209,6 +232,8 @@ Useful smoke checks:
 python3 ChatGPT_Export_parser.py parse-and-ingest demo/demo_conversations.json --db demo/demo_chatgpt_canonical.db --run-id demo_run
 python3 ChatGPT_Export_parser.py query --db demo/demo_chatgpt_canonical.db --type conversations --limit 2 --format json
 python3 ChatGPT_Export_parser.py search --db demo/demo_chatgpt_canonical.db --q "branch" --format json
+python3 ChatGPT_Export_parser.py export-conversation --db demo/demo_chatgpt_canonical.db --conversation-id demo_conv_1 --format text
+python3 ChatGPT_Export_parser.py check --db demo/demo_chatgpt_canonical.db --format json
 ```
 
 For deeper schema details, see [SCHEMA_AND_SPEC.md](SCHEMA_AND_SPEC.md) and [CLI_SPEC.md](CLI_SPEC.md).
