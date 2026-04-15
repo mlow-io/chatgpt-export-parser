@@ -249,10 +249,72 @@ class CanonicalManager:
         parents, children, depth = _graph(mapping)
         main_path = _main_path_index(mapping, parents, conv.get("current_node"))
         main_path_ids = set(main_path)
+        all_messages, models_used = self._collect_message_rows(
+            conv_id=conv_id,
+            mapping=mapping,
+            main_path_ids=main_path_ids,
+            main_path=main_path,
+            depth=depth,
+            active_run_id=active_run_id,
+        )
+        conversation_row = self._build_conversation_row(
+            conv=conv,
+            conv_id=conv_id,
+            source_file=source_file,
+            active_run_id=active_run_id,
+            all_messages=all_messages,
+            main_path_ids=main_path_ids,
+            models_used=models_used,
+        )
 
+        canonical_snapshot = self._should_replace_conversation_snapshot(conv_id, conversation_row)
+        if canonical_snapshot or not self._conversation_exists(conv_id):
+            self._upsert_conversation(conversation_row)
+        self._upsert_conversation_run(active_run_id, conversation_row, canonical_snapshot)
+        self._upsert_nodes(
+            conv_id=conv_id,
+            mapping=mapping,
+            parents=parents,
+            children=children,
+            depth=depth,
+            main_path=main_path,
+            main_path_ids=main_path_ids,
+            active_run_id=active_run_id,
+            canonical_snapshot=canonical_snapshot,
+        )
+        self._upsert_node_children(
+            conv_id=conv_id,
+            children=children,
+            active_run_id=active_run_id,
+            canonical_snapshot=canonical_snapshot,
+        )
+        self._upsert_messages(
+            conv_id=conv_id,
+            active_run_id=active_run_id,
+            all_messages=all_messages,
+            canonical_snapshot=canonical_snapshot,
+        )
+
+        self._ingest_links(conv, conv_id, active_run_id, all_messages)
+        self._ingest_attachments(conv_id, active_run_id, mapping)
+        self._ingest_tool_rows(conv_id, active_run_id, mapping)
+
+        self.stats["conversations"] += 1
+        self.stats["messages"] += len(all_messages)
+        self.conn.commit()
+
+    def _collect_message_rows(
+        self,
+        *,
+        conv_id: str,
+        mapping: Dict[str, Dict[str, Any]],
+        main_path_ids: set[str],
+        main_path: Dict[str, int],
+        depth: Dict[str, int],
+        active_run_id: str,
+    ) -> Tuple[List[Dict[str, Any]], set[str]]:
         all_messages: List[Dict[str, Any]] = []
-        ordered_messages: List[Dict[str, Any]] = []
-        models_used = set()
+        models_used: set[str] = set()
 
         for node_id, node in mapping.items():
             if node is None:
@@ -271,7 +333,6 @@ class CanonicalManager:
             if metadata.get("default_model_slug"):
                 models_used.add(metadata["default_model_slug"])
 
-            text = _extract_message_text(message)
             row = {
                 "conversation_id": conv_id,
                 "id": message.get("id"),
@@ -282,7 +343,7 @@ class CanonicalManager:
                 "recipient": recipient,
                 "channel": message.get("channel"),
                 "content_type": content_type,
-                "text": text,
+                "text": _extract_message_text(message),
                 "raw_content": _json(content),
                 "created_at": iso_from_timestamp(message.get("create_time")),
                 "updated_at": iso_from_timestamp(message.get("update_time")),
@@ -293,8 +354,13 @@ class CanonicalManager:
                 "depth": depth.get(node_id),
                 "model": metadata.get("model_slug") or metadata.get("default_model_slug"),
                 "metadata": _json(metadata),
-                "time_index": None,  # assigned below
-                "message_kind": determine_message_kind(role or "", content_type or "", recipient or "", content if isinstance(content, dict) else {}),
+                "time_index": None,
+                "message_kind": determine_message_kind(
+                    role or "",
+                    content_type or "",
+                    recipient or "",
+                    content if isinstance(content, dict) else {},
+                ),
             }
             if row["id"]:
                 all_messages.append(row)
@@ -302,8 +368,21 @@ class CanonicalManager:
         all_messages.sort(key=lambda item: ((item["created_at"] or ""), item["node_id"] or "", item["id"] or ""))
         for index, row in enumerate(all_messages):
             row["time_index"] = index
-        ordered_messages = [row for row in all_messages if row["node_id"] in main_path_ids] or list(all_messages)
 
+        return all_messages, models_used
+
+    def _build_conversation_row(
+        self,
+        *,
+        conv: Dict[str, Any],
+        conv_id: str,
+        source_file: str,
+        active_run_id: str,
+        all_messages: List[Dict[str, Any]],
+        main_path_ids: set[str],
+        models_used: set[str],
+    ) -> Dict[str, Any]:
+        ordered_messages = [row for row in all_messages if row["node_id"] in main_path_ids] or list(all_messages)
         role_counts: Counter[str] = Counter()
         for row in ordered_messages:
             role_counts[row.get("role") or "unknown"] += 1
@@ -313,20 +392,18 @@ class CanonicalManager:
         last_assistant = next((row["text"] for row in reversed(ordered_messages) if row.get("role") == "assistant" and row.get("text")), None)
         keyword_text = _extract_keywords(row.get("text") for row in ordered_messages)
         timestamps = [row["created_at"] for row in all_messages if row.get("created_at")]
-        earliest_message_at = min(timestamps) if timestamps else None
-        latest_message_at = max(timestamps) if timestamps else None
-
         safe_urls = conv.get("safe_urls") or []
         blocked_urls = conv.get("blocked_urls") or []
-        conversation_row = {
+
+        return {
             "id": conv_id,
             "run_id": active_run_id,
             "source_id": conv.get("conversation_id") or conv_id,
             "title": conv.get("title"),
             "created_at": iso_from_timestamp(conv.get("create_time")),
             "updated_at": iso_from_timestamp(conv.get("update_time")),
-            "earliest_message_at": earliest_message_at,
-            "latest_message_at": latest_message_at,
+            "earliest_message_at": min(timestamps) if timestamps else None,
+            "latest_message_at": max(timestamps) if timestamps else None,
             "default_model": conv.get("default_model_slug"),
             "models_used": _json(sorted(models_used)),
             "is_archived": conv.get("is_archived"),
@@ -351,11 +428,19 @@ class CanonicalManager:
             "source_file": source_file,
         }
 
-        canonical_snapshot = self._should_replace_conversation_snapshot(conv_id, conversation_row)
-        if canonical_snapshot or not self._conversation_exists(conv_id):
-            self._upsert_conversation(conversation_row)
-        self._upsert_conversation_run(active_run_id, conversation_row, canonical_snapshot)
-
+    def _upsert_nodes(
+        self,
+        *,
+        conv_id: str,
+        mapping: Dict[str, Dict[str, Any]],
+        parents: Dict[str, Optional[str]],
+        children: Dict[str, List[str]],
+        depth: Dict[str, int],
+        main_path: Dict[str, int],
+        main_path_ids: set[str],
+        active_run_id: str,
+        canonical_snapshot: bool,
+    ) -> None:
         for node_id, node in mapping.items():
             if node is None:
                 continue
@@ -382,6 +467,14 @@ class CanonicalManager:
                     node_row,
                 )
 
+    def _upsert_node_children(
+        self,
+        *,
+        conv_id: str,
+        children: Dict[str, List[str]],
+        active_run_id: str,
+        canonical_snapshot: bool,
+    ) -> None:
         for parent_node_id, child_list in children.items():
             for child_index, child_node_id in enumerate(child_list):
                 edge_row = {
@@ -398,6 +491,14 @@ class CanonicalManager:
                         edge_row,
                     )
 
+    def _upsert_messages(
+        self,
+        *,
+        conv_id: str,
+        active_run_id: str,
+        all_messages: List[Dict[str, Any]],
+        canonical_snapshot: bool,
+    ) -> None:
         for message_row in all_messages:
             existing = self._row_exists("messages", conv_id, message_row["id"])
             if canonical_snapshot or not existing:
@@ -425,14 +526,6 @@ class CanonicalManager:
                 """,
                 (active_run_id, conv_id, message_row["id"], _iso_now()),
             )
-
-        self._ingest_links(conv, conv_id, active_run_id, all_messages)
-        self._ingest_attachments(conv_id, active_run_id, mapping)
-        self._ingest_tool_rows(conv_id, active_run_id, mapping)
-
-        self.stats["conversations"] += 1
-        self.stats["messages"] += len(all_messages)
-        self.conn.commit()
 
     def _existing_run_id(self, table: str, conversation_id: str, entity_id: str) -> Optional[str]:
         row = self.conn.execute(

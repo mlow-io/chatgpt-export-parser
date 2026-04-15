@@ -233,6 +233,7 @@ Verification commands:
 ### Known drift or weak spots
 - Specs describe at least one field not present in the live schema (`message_runs.created_at`).
 - `canonical_manager.py` still concentrates more ingest behavior than is ideal, even with improved coverage.
+- Public docs/spec files still lag behind the now-verified command and validation behavior.
 - Validation is narrower than the data model’s actual complexity.
 - Docs/specs have not yet been updated to reflect the dump/restore FTS repair, safe `order-by` behavior, or the plain-text export contract.
 - Demo/operator workflows currently require inspecting actual conversation IDs from query output or fixture data; the docs should make the end-to-end demo path explicit.
@@ -310,3 +311,8 @@ Verification commands:
     Extend `check` to verify graph edges, conversation counts, FTS coverage, and canonical snapshot marker consistency.
   - Why:
     Orphan-record checks alone were too weak for a canonical archive intended to be a durable SQLite source of truth.
+- 2026-04-15 / Milestone 05:
+  - Decision:
+    Split `ingest_conversation()` into named helper stages for message collection, conversation-row assembly, node upserts, edge upserts, and message upserts.
+  - Why:
+    The function had become the main concentration point for canonical ingest behavior, which made future correctness work riskier than necessary.
