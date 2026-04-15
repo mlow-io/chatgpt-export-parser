@@ -9,6 +9,7 @@
 - Current frontier: establish the long-horizon control stack, baseline the suite, and drive an evidence-backed repair plan off repo reality rather than stale claims.
 - Repo state summary: the repo is small, runnable, and testable; canonical ingest is the product center; the current unittest suite passes; docs and tests do not yet cover the full operational surface evenly.
 - Repo state summary: the repo is small, runnable, and testable; canonical ingest is the product center; the unittest suite has been expanded and passes cleanly without SQLite connection warnings; several operational command edges have already been hardened during the regression pass.
+- Repo state summary: the repo is small, runnable, and testable; the suite now covers richer canonical invariants including snapshot ownership, extraction of links/attachments/tool rows, ZIP/streaming ingest parity, and deeper integrity checks; docs/specs still need to be brought in line with the verified behavior.
 - Biggest risks right now:
   - schema/docs drift creates false confidence
   - the large canonical ingest module makes subtle regressions easy
@@ -231,7 +232,7 @@ Verification commands:
 
 ### Known drift or weak spots
 - Specs describe at least one field not present in the live schema (`message_runs.created_at`).
-- Canonical ingest and snapshot behavior still need deeper edge-case coverage than the current suite provides.
+- `canonical_manager.py` still concentrates more ingest behavior than is ideal, even with improved coverage.
 - Validation is narrower than the data model’s actual complexity.
 - Docs/specs have not yet been updated to reflect the dump/restore FTS repair, safe `order-by` behavior, or the plain-text export contract.
 - Demo/operator workflows currently require inspecting actual conversation IDs from query output or fixture data; the docs should make the end-to-end demo path explicit.
@@ -294,3 +295,18 @@ Verification commands:
     Fix SQLite connection lifetime explicitly in maintenance helpers and in the canonical ingest test helper.
   - Why:
     Expanded verification surfaced unclosed-connection warnings that obscured signal and indicated real cleanup gaps.
+- 2026-04-15 / Milestone 03:
+  - Decision:
+    Preserve the existing canonical snapshot marker when ingesting an older non-canonical run.
+  - Why:
+    The previous implementation could erase which run actually backed the canonical conversation snapshot.
+- 2026-04-15 / Milestone 03:
+  - Decision:
+    Expand regression coverage for rich extraction paths and ingest modes.
+  - Why:
+    Links, attachments, tool rows, ZIP input, and streaming parity were part of the product surface but not directly protected by tests.
+- 2026-04-15 / Milestone 03:
+  - Decision:
+    Extend `check` to verify graph edges, conversation counts, FTS coverage, and canonical snapshot marker consistency.
+  - Why:
+    Orphan-record checks alone were too weak for a canonical archive intended to be a durable SQLite source of truth.

@@ -23,11 +23,14 @@
   - dump/restore round-trip repaired for FTS-backed archives
   - `query --order-by` safety tightened and plain-text export behavior corrected
   - SQLite connection warnings removed from the verified test run
+  - canonical snapshot marker handling fixed for older non-canonical reimports
+  - regression coverage expanded for rich extraction paths plus ZIP and streaming ingest parity
+  - `check` now validates counts, FTS coverage, graph edges, and canonical snapshot markers in addition to orphan-record cases
 - In progress:
-  - Milestone 03: deeper canonical ingest and schema invariant hardening
+  - Milestone 05/07 work: internal refactor cleanup and docs/spec alignment
 - Remaining frontier:
-  - harden canonical invariants and CLI behavior
-  - strengthen validation and clean-room workflow confidence
+  - refactor concentrated ingest code into smaller helpers without changing behavior
+  - strengthen clean-room workflow confidence and final end-to-end validation
   - align docs/specs with verified implementation
 
 ## How To Run
@@ -80,5 +83,5 @@
 
 ## Recommended Next Actions
 
-- Add deeper canonical ingest edge-case coverage around supersession, provenance consistency, and graph invariants.
-- Update public docs/specs so they reflect the now-verified command behavior and repaired dump/restore path.
+- Refactor concentrated ingest helpers while keeping the now-expanded suite green.
+- Update public docs/specs so they reflect verified command behavior, the repaired dump/restore path, and stronger integrity checks.

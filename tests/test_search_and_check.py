@@ -179,6 +179,46 @@ class SearchAndCheckTests(unittest.TestCase):
             count = cur.fetchone()[0]
         self.assertEqual(count, 2)
 
+    def test_check_detects_message_count_and_fts_drift(self):
+        db_path = self._canonical_ingest([_make_conv("conv_drift", "drift me")])
+        logger = setup_logging(None, verbose=False)
+        import sqlite3
+        with closing(sqlite3.connect(db_path)) as conn:
+            cur = conn.cursor()
+            cur.execute("UPDATE conversations SET message_count = 999 WHERE id = 'conv_drift'")
+            cur.execute("DELETE FROM message_fts WHERE conversation_id = 'conv_drift'")
+            conn.commit()
+
+        buf = StringIO()
+        with redirect_stdout(buf):
+            run_check(SimpleNamespace(db=db_path, format="json"), logger)
+
+        result = json.loads(buf.getvalue())
+        error_types = {error["type"] for error in result["errors"]}
+        self.assertFalse(result["ok"])
+        self.assertIn("conversation_message_count_mismatch", error_types)
+        self.assertIn("missing_message_fts_row", error_types)
+
+    def test_check_detects_missing_canonical_snapshot_marker(self):
+        db_path = self._canonical_ingest([_make_conv("conv_snapshot_check", "snapshot me")])
+        logger = setup_logging(None, verbose=False)
+        import sqlite3
+        with closing(sqlite3.connect(db_path)) as conn:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE conversation_runs SET is_canonical_snapshot = 0 WHERE conversation_id = 'conv_snapshot_check'"
+            )
+            conn.commit()
+
+        buf = StringIO()
+        with redirect_stdout(buf):
+            run_check(SimpleNamespace(db=db_path, format="json"), logger)
+
+        result = json.loads(buf.getvalue())
+        error_types = {error["type"] for error in result["errors"]}
+        self.assertFalse(result["ok"])
+        self.assertIn("canonical_snapshot_marker_mismatch", error_types)
+
 
 if __name__ == "__main__":
     unittest.main()

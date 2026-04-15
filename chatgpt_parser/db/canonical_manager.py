@@ -515,10 +515,11 @@ class CanonicalManager:
         )
 
     def _upsert_conversation_run(self, run_id: str, row: Dict[str, Any], canonical_snapshot: bool) -> None:
-        self.conn.execute(
-            "UPDATE conversation_runs SET is_canonical_snapshot = 0 WHERE conversation_id = ?",
-            (row["id"],),
-        )
+        if canonical_snapshot:
+            self.conn.execute(
+                "UPDATE conversation_runs SET is_canonical_snapshot = 0 WHERE conversation_id = ?",
+                (row["id"],),
+            )
         self._upsert_row(
             "conversation_runs",
             [

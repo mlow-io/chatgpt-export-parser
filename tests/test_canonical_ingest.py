@@ -142,6 +142,91 @@ def _make_branch(conv_id="branch_conv"):
     }
 
 
+def _make_rich_conv(conv_id="rich_conv"):
+    user_node = f"node_{conv_id}_user"
+    tool_call_node = f"node_{conv_id}_tool_call"
+    tool_result_node = f"node_{conv_id}_tool_result"
+    image_node = f"node_{conv_id}_image"
+    return {
+        "id": conv_id,
+        "title": "Rich Conversation",
+        "create_time": 10.0,
+        "update_time": 40.0,
+        "default_model_slug": "gpt-4o",
+        "current_node": image_node,
+        "safe_urls": ["https://chat.openai.com/c/example"],
+        "blocked_urls": ["https://example.invalid/blocked"],
+        "mapping": {
+            user_node: {
+                "id": user_node,
+                "parent": None,
+                "children": [tool_call_node],
+                "message": {
+                    "id": f"msg_{conv_id}_user",
+                    "author": {"role": "user"},
+                    "content": {"content_type": "text", "parts": ["See https://example.com/docs"]},
+                    "create_time": 10.0,
+                    "update_time": 10.0,
+                    "metadata": {},
+                },
+            },
+            tool_call_node: {
+                "id": tool_call_node,
+                "parent": user_node,
+                "children": [tool_result_node],
+                "message": {
+                    "id": f"msg_{conv_id}_tool_call",
+                    "author": {"role": "assistant"},
+                    "recipient": "python",
+                    "content": {"content_type": "code", "text": "{\"city\": \"Austin\"}"},
+                    "create_time": 20.0,
+                    "update_time": 20.0,
+                    "metadata": {"model_slug": "gpt-4o"},
+                },
+            },
+            tool_result_node: {
+                "id": tool_result_node,
+                "parent": tool_call_node,
+                "children": [image_node],
+                "message": {
+                    "id": f"msg_{conv_id}_tool_result",
+                    "author": {"role": "tool"},
+                    "content": {"content_type": "execution_output", "text": "72 and sunny"},
+                    "create_time": 30.0,
+                    "update_time": 30.0,
+                    "metadata": {},
+                },
+            },
+            image_node: {
+                "id": image_node,
+                "parent": tool_result_node,
+                "children": [],
+                "message": {
+                    "id": f"msg_{conv_id}_image",
+                    "author": {"role": "assistant"},
+                    "content": {
+                        "content_type": "multimodal_text",
+                        "parts": [
+                            "Here is the image",
+                            {
+                                "content_type": "image_asset_pointer",
+                                "asset_pointer": "file-service://asset-123",
+                                "size_bytes": 2048,
+                                "width": 512,
+                                "height": 512,
+                                "metadata": {"variant": "thumbnail"},
+                            },
+                        ],
+                    },
+                    "create_time": 40.0,
+                    "update_time": 40.0,
+                    "metadata": {"model_slug": "gpt-4o-mini"},
+                },
+            },
+        },
+    }
+
+
 class CanonicalArchiveSchemaTests(unittest.TestCase):
     def test_schema_creates_chatgpt_native_tables(self):
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as handle:
@@ -271,6 +356,82 @@ class CanonicalArchiveIngestTests(unittest.TestCase):
             with self._open(db_path) as conn:
                 runs = conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
                 self.assertEqual(runs, 1)
+        finally:
+            os.unlink(db_path)
+
+    def test_older_noncanonical_import_does_not_clear_existing_canonical_snapshot(self):
+        run_new = ("run_new", [_make_extended("conv_snapshot")])
+        run_old = ("run_old", [_make_single_turn("conv_snapshot", title="Older Snapshot", ts=900.0)])
+        db_path = self._ingest_runs([run_new, run_old])
+        try:
+            with self._open(db_path) as conn:
+                run_rows = conn.execute(
+                    """
+                    SELECT run_id, message_count, is_canonical_snapshot
+                    FROM conversation_runs
+                    WHERE conversation_id = 'conv_snapshot'
+                    ORDER BY run_id ASC
+                    """
+                ).fetchall()
+                self.assertEqual(
+                    [tuple(row) for row in run_rows],
+                    [("run_new", 3, 1), ("run_old", 1, 0)],
+                )
+
+                conv = conn.execute(
+                    "SELECT run_id, message_count FROM conversations WHERE id = 'conv_snapshot'"
+                ).fetchone()
+                self.assertEqual(tuple(conv), ("run_new", 3))
+        finally:
+            os.unlink(db_path)
+
+    def test_links_attachments_and_tool_rows_are_extracted(self):
+        db_path = self._ingest_runs([("run_rich", [_make_rich_conv()])])
+        try:
+            with self._open(db_path) as conn:
+                conversation = conn.execute(
+                    """
+                    SELECT safe_url_count, blocked_url_count, message_count, message_count_main_path
+                    FROM conversations
+                    WHERE id = 'rich_conv'
+                    """
+                ).fetchone()
+                self.assertEqual(tuple(conversation), (1, 1, 4, 4))
+
+                links = conn.execute(
+                    "SELECT source, url, message_id FROM links WHERE conversation_id = 'rich_conv' ORDER BY source, url"
+                ).fetchall()
+                self.assertEqual(
+                    [tuple(row) for row in links],
+                    [
+                        ("message_text", "https://example.com/docs", "msg_rich_conv_user"),
+                        ("safe_url", "https://chat.openai.com/c/example", None),
+                    ],
+                )
+
+                attachments = conn.execute(
+                    "SELECT message_id, type, filesize_bytes, source_ref FROM attachments WHERE conversation_id = 'rich_conv'"
+                ).fetchall()
+                self.assertEqual(
+                    [tuple(row) for row in attachments],
+                    [("msg_rich_conv_image", "image", 2048, "file-service://asset-123")],
+                )
+
+                tool_calls = conn.execute(
+                    "SELECT message_id, tool_name, raw_arguments, arguments_json FROM tool_calls WHERE conversation_id = 'rich_conv'"
+                ).fetchall()
+                self.assertEqual(
+                    [tuple(row) for row in tool_calls],
+                    [("msg_rich_conv_tool_call", "python", "{\"city\": \"Austin\"}", "{\"city\": \"Austin\"}")],
+                )
+
+                tool_results = conn.execute(
+                    "SELECT message_id, raw_result FROM tool_results WHERE conversation_id = 'rich_conv'"
+                ).fetchall()
+                self.assertEqual(
+                    [tuple(row) for row in tool_results],
+                    [("msg_rich_conv_tool_result", "72 and sunny")],
+                )
         finally:
             os.unlink(db_path)
 
