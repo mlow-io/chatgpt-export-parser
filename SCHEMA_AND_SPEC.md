@@ -144,7 +144,6 @@ Per-run message provenance.
 - `run_id`
 - `conversation_id`
 - `message_id`
-- `created_at`
 - `imported_at`
 
 ### links
@@ -247,6 +246,12 @@ Same behavior and flags as `parse-and-ingest`.
 - `dump-db`
 - `restore-db`
 
+Behavior notes:
+
+- `query --type conversations` only accepts allowlisted `--order-by` values
+- `export-conversation --format text` and `export-conversations --format text` emit plain text, not Markdown
+- `check` validates archive counts, graph edges, FTS coverage, and canonical snapshot markers in addition to basic orphan references
+
 ## Canonical Notes
 
 - The canonical archive is the preferred and standard DB shape.
@@ -254,3 +259,5 @@ Same behavior and flags as `parse-and-ingest`.
 - You can keep multiple canonical archives simply by choosing different `--db` paths.
 - Branches are not deduped away. Branch/node structure inside a conversation remains intact.
 - Successive overlapping exports dedupe only where they represent the same logical conversation/message identity.
+- A later non-canonical run must not clear the existing canonical snapshot marker in `conversation_runs`.
+- `dump-db` / `restore-db` preserve the FTS-backed search surface as part of the canonical archive workflow.

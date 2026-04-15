@@ -27,11 +27,12 @@
   - regression coverage expanded for rich extraction paths plus ZIP and streaming ingest parity
   - `check` now validates counts, FTS coverage, graph edges, and canonical snapshot markers in addition to orphan-record cases
   - canonical ingest flow refactored into smaller helper stages without changing tested behavior
+  - README, CLI spec, schema notes, and roadmap docs aligned with the verified implementation
+  - clean-room workflow verified across ingest, query, search, export, validation, provenance listing, dump, and restore
 - In progress:
-  - Milestone 07 work: docs/spec alignment and final clean-room validation
+  - none
 - Remaining frontier:
-  - strengthen clean-room workflow confidence and final end-to-end validation
-  - align docs/specs with verified implementation
+  - future incremental hardening only; the current horizon is complete
 
 ## How To Run
 
@@ -71,17 +72,15 @@
   - validation depth for archive integrity
   - internal decomposition of the canonical ingest implementation
 - Risky or unclear:
-  - exact boundary between “documented guarantee” and “current behavior” is not fully explicit yet
-  - some spec/schema details drift from live code
-  - canonical supersession/deduping edge cases still need more explicit coverage than the operational command surfaces now have
+  - future real-world exports may still expose edge cases not represented by the synthetic fixtures
+  - canonical supersession/deduping remains the highest-sensitivity behavior for future changes
 
 ## Known Issues
 
-- `SCHEMA_AND_SPEC.md` documents at least one field not present in the live schema (`message_runs.created_at`).
-- `chatgpt_parser/db/canonical_manager.py` remains a concentrated implementation hotspot.
-- Demo export examples should be more explicit about valid conversation IDs; the verified demo branching conversation ID is `demo_conv_1`.
+- No active blocker was left open in this horizon.
+- Future work should assume real export variability is still the main remaining risk surface.
 
 ## Recommended Next Actions
 
-- Refactor concentrated ingest helpers while keeping the now-expanded suite green.
-- Update public docs/specs so they reflect verified command behavior, the repaired dump/restore path, and stronger integrity checks.
+- Use the expanded suite and `check` behavior as the baseline for any future canonical-archive changes.
+- Prefer additive hardening for new real-world export shapes over any shift away from the canonical-only product story.
