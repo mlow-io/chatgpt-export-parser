@@ -26,10 +26,10 @@
   - canonical snapshot marker handling fixed for older non-canonical reimports
   - regression coverage expanded for rich extraction paths plus ZIP and streaming ingest parity
   - `check` now validates counts, FTS coverage, graph edges, and canonical snapshot markers in addition to orphan-record cases
+  - canonical ingest flow refactored into smaller helper stages without changing tested behavior
 - In progress:
-  - Milestone 05/07 work: internal refactor cleanup and docs/spec alignment
+  - Milestone 07 work: docs/spec alignment and final clean-room validation
 - Remaining frontier:
-  - refactor concentrated ingest code into smaller helpers without changing behavior
   - strengthen clean-room workflow confidence and final end-to-end validation
   - align docs/specs with verified implementation
 
