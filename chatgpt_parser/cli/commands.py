@@ -14,59 +14,97 @@ from ..db.common import connect_db
 from ..utils.io import stream_json_array, stream_json_array_from_file
 
 
+def _safe_conversation_order_by(order_by: str | None) -> str | None:
+    if not order_by:
+        return None
+    allowed_columns = {
+        "id",
+        "run_id",
+        "title",
+        "created_at",
+        "updated_at",
+        "earliest_message_at",
+        "latest_message_at",
+        "default_model",
+        "current_node_id",
+        "message_count",
+        "message_count_main_path",
+        "user_message_count",
+        "assistant_message_count",
+        "system_message_count",
+        "tool_message_count",
+        "safe_url_count",
+        "blocked_url_count",
+    }
+    parts = order_by.split()
+    if len(parts) not in {1, 2}:
+        return None
+    column = parts[0]
+    if column not in allowed_columns:
+        return None
+    direction = "DESC"
+    if len(parts) == 2:
+        direction = parts[1].upper()
+        if direction not in {"ASC", "DESC"}:
+            return None
+    return f"{column} {direction}"
+
+
 def run_canonical_ingest(args, logger: logging.Logger):
     input_paths = args.inputs
     streaming = getattr(args, "streaming", True)
     run_id = args.run_id or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
     mgr = CanonicalManager(db_path=args.db, mode=args.mode)
-    if not mgr.begin_run(run_id, input_paths):
-        return {"run_id": run_id, "stats": dict(mgr.stats), "skipped": True}
+    try:
+        if not mgr.begin_run(run_id, input_paths):
+            return {"run_id": run_id, "stats": dict(mgr.stats), "skipped": True}
 
-    start_time = time.time()
+        start_time = time.time()
 
-    def iter_conversations(path: str):
-        if path.lower().endswith(".zip"):
-            with zipfile.ZipFile(path, "r") as archive:
-                if "conversations.json" not in archive.namelist():
-                    raise FileNotFoundError("Zip does not contain conversations.json")
-                with archive.open("conversations.json") as handle:
-                    import io
-                    text_handle = io.TextIOWrapper(handle, encoding="utf-8")
-                    if streaming:
-                        yield from stream_json_array_from_file(text_handle)
-                    else:
-                        data = json.load(text_handle)
-                        if isinstance(data, list):
-                            yield from data
-        else:
-            if streaming:
-                yield from stream_json_array(path)
+        def iter_conversations(path: str):
+            if path.lower().endswith(".zip"):
+                with zipfile.ZipFile(path, "r") as archive:
+                    if "conversations.json" not in archive.namelist():
+                        raise FileNotFoundError("Zip does not contain conversations.json")
+                    with archive.open("conversations.json") as handle:
+                        import io
+                        text_handle = io.TextIOWrapper(handle, encoding="utf-8")
+                        if streaming:
+                            yield from stream_json_array_from_file(text_handle)
+                        else:
+                            data = json.load(text_handle)
+                            if isinstance(data, list):
+                                yield from data
             else:
-                with open(path, "r", encoding="utf-8") as handle:
-                    data = json.load(handle)
-                if isinstance(data, list):
-                    yield from data
+                if streaming:
+                    yield from stream_json_array(path)
+                else:
+                    with open(path, "r", encoding="utf-8") as handle:
+                        data = json.load(handle)
+                    if isinstance(data, list):
+                        yield from data
 
-    for path in input_paths:
-        try:
-            logger.info(f"Reading {path}...")
-            for conv in iter_conversations(path):
-                try:
-                    mgr.ingest_conversation(conv, path, run_id=run_id)
-                except Exception:
-                    logger.exception(f"Error processing conversation in {path}")
-        except Exception:
-            logger.exception(f"Failed to read file {path}")
+        for path in input_paths:
+            try:
+                logger.info(f"Reading {path}...")
+                for conv in iter_conversations(path):
+                    try:
+                        mgr.ingest_conversation(conv, path, run_id=run_id)
+                    except Exception:
+                        logger.exception(f"Error processing conversation in {path}")
+            except Exception:
+                logger.exception(f"Failed to read file {path}")
 
-    mgr.finalize_run()
-    elapsed = time.time() - start_time
-    stats = dict(mgr.stats)
-    logger.info(
-        f"Canonical ingest complete: {stats.get('conversations', 0)} conversations, "
-        f"{stats.get('messages', 0)} messages, {stats.get('links', 0)} links in {elapsed:.1f}s"
-    )
-    mgr.close()
-    return {"run_id": run_id, "stats": stats, "elapsed_sec": elapsed, "skipped": False}
+        mgr.finalize_run()
+        elapsed = time.time() - start_time
+        stats = dict(mgr.stats)
+        logger.info(
+            f"Canonical ingest complete: {stats.get('conversations', 0)} conversations, "
+            f"{stats.get('messages', 0)} messages, {stats.get('links', 0)} links in {elapsed:.1f}s"
+        )
+        return {"run_id": run_id, "stats": stats, "elapsed_sec": elapsed, "skipped": False}
+    finally:
+        mgr.close()
 
 
 def run_query(args, logger: logging.Logger):
@@ -81,7 +119,12 @@ def run_query(args, logger: logging.Logger):
 
     if args.type == "conversations":
         limit = args.limit or 10
-        order_by = args.order_by or "COALESCE(updated_at, latest_message_at, created_at) DESC"
+        order_by = _safe_conversation_order_by(args.order_by)
+        if args.order_by and not order_by:
+            logger.error("Invalid --order-by value")
+            conn.close()
+            return
+        order_by = order_by or "COALESCE(updated_at, latest_message_at, created_at) DESC"
         cur.execute(f"SELECT * FROM conversations ORDER BY {order_by} LIMIT ?", (limit,))
         result = [dict(row) for row in cur.fetchall()]
     elif args.type == "conversation_detail":
