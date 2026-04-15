@@ -4,6 +4,54 @@ import os
 import sqlite3
 
 from .common import connect_db
+from .canonical_schema import CANONICAL_TABLES_SQL
+
+
+def _message_fts_create_sql() -> str:
+    for stmt in CANONICAL_TABLES_SQL:
+        if "CREATE VIRTUAL TABLE IF NOT EXISTS message_fts USING fts5" in stmt:
+            return stmt.strip()
+    raise RuntimeError("message_fts schema definition not found")
+
+
+def _portable_restore_script(script: str) -> str:
+    """
+    Normalize SQLite iterdump output so FTS5 virtual tables restore reliably.
+
+    Raw iterdump output serializes FTS shadow tables and writable_schema edits,
+    which is brittle to replay. For this repo we restore the logical virtual
+    table definition plus its row inserts and skip the shadow-table internals.
+    """
+    restored_lines = []
+    fts_create_sql = _message_fts_create_sql()
+    inserted_fts_schema = False
+    skipping_fts_sqlite_master = False
+
+    for raw_line in script.splitlines():
+        line = raw_line.strip()
+        if skipping_fts_sqlite_master:
+            if line.endswith(")');"):
+                skipping_fts_sqlite_master = False
+            continue
+        if line in {"PRAGMA writable_schema=ON;", "PRAGMA writable_schema=OFF;"}:
+            continue
+        if "INSERT INTO sqlite_master" in raw_line and "'message_fts'" in raw_line:
+            if not inserted_fts_schema:
+                restored_lines.append(fts_create_sql)
+                inserted_fts_schema = True
+            skipping_fts_sqlite_master = True
+            continue
+        if "message_fts_" in raw_line:
+            continue
+        if line.startswith('INSERT INTO "message_fts"') or line.startswith("INSERT INTO 'message_fts'") or line.startswith("INSERT INTO message_fts"):
+            if not inserted_fts_schema:
+                restored_lines.append(fts_create_sql)
+                inserted_fts_schema = True
+            restored_lines.append(raw_line)
+            continue
+        restored_lines.append(raw_line)
+
+    return "\n".join(restored_lines)
 
 
 def run_check(args, logger: logging.Logger):
@@ -86,9 +134,13 @@ def run_dump_db(args, logger: logging.Logger):
     if not os.path.exists(args.db):
         logger.error(f"DB {args.db} not found.")
         return
-    with connect_db(args.db) as conn, open(args.output, "w", encoding="utf-8") as handle:
-        for line in conn.iterdump():
-            handle.write(f"{line}\n")
+    conn = connect_db(args.db)
+    try:
+        with open(args.output, "w", encoding="utf-8") as handle:
+            for line in conn.iterdump():
+                handle.write(f"{line}\n")
+    finally:
+        conn.close()
     logger.info(f"Dumped DB to {args.output}")
 
 
@@ -98,8 +150,13 @@ def run_restore_db(args, logger: logging.Logger):
         return
     if os.path.exists(args.db):
         os.remove(args.db)
-    with connect_db(args.db) as conn, open(args.input, "r", encoding="utf-8") as handle:
-        conn.execute("PRAGMA foreign_keys = OFF")
-        conn.executescript(handle.read())
-        conn.execute("PRAGMA foreign_keys = ON")
+    conn = connect_db(args.db)
+    try:
+        with open(args.input, "r", encoding="utf-8") as handle:
+            conn.execute("PRAGMA foreign_keys = OFF")
+            conn.executescript(_portable_restore_script(handle.read()))
+            conn.execute("PRAGMA foreign_keys = ON")
+            conn.commit()
+    finally:
+        conn.close()
     logger.info(f"Restored DB to {args.db}")

@@ -4,6 +4,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -166,7 +167,7 @@ class CanonicalArchiveIngestTests(unittest.TestCase):
     def _open(self, db_path):
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
-        return conn
+        return closing(conn)
 
     def _ingest_runs(self, runs):
         handle = tempfile.NamedTemporaryFile(suffix=".db", delete=False)

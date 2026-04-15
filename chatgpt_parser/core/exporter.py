@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from ..db.common import connect_db
 
+
 def format_messages_markdown(conv: Dict[str, Any],
                              messages: List[Dict[str, Any]],
                              anchor: Optional[str] = None,
@@ -56,6 +57,30 @@ def format_messages_markdown(conv: Dict[str, Any],
     return "\n".join(fm_lines + lines)
 
 
+def format_messages_text(conv: Dict[str, Any], messages: List[Dict[str, Any]]) -> str:
+    title = conv.get("title") or conv.get("id") or "Conversation"
+    lines = [f"Title: {title}", f"Conversation ID: {conv.get('id')}"]
+    if conv.get("created_at"):
+        lines.append(f"Created at: {conv.get('created_at')}")
+    lines.append("")
+
+    for idx, msg in enumerate(messages, start=1):
+        role = msg.get("role") or "unknown"
+        header = f"{idx}. {role}"
+        if msg.get("created_at"):
+            header += f" @ {msg['created_at']}"
+        lines.append(header)
+        if msg.get("message_kind"):
+            lines.append(f"kind: {msg['message_kind']}")
+        if msg.get("model"):
+            lines.append(f"model: {msg['model']}")
+        lines.append(msg.get("text") or "")
+        lines.append("")
+        lines.append("-" * 40)
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def run_export_conversation(args, logger: logging.Logger):
     if not os.path.exists(args.db):
         logger.error(f"DB {args.db} not found.")
@@ -83,6 +108,8 @@ def run_export_conversation(args, logger: logging.Logger):
 
     if args.format == "json":
         content = json.dumps({"conversation": conv_dict, "messages": messages}, indent=2, default=str)
+    elif args.format == "text":
+        content = format_messages_text(conv_dict, messages)
     else:
         fm = getattr(args, "frontmatter", False)
         content = format_messages_markdown(conv_dict, messages, frontmatter=fm)
