@@ -102,6 +102,105 @@ def run_check(args, logger: logging.Logger):
     for row in cur.fetchall():
         errors.append({"type": "current_node_missing", **dict(row)})
 
+    cur.execute(
+        """
+        SELECT nc.conversation_id, nc.parent_node_id, nc.child_node_id, nc.child_index
+        FROM node_children nc
+        LEFT JOIN nodes p
+          ON nc.conversation_id = p.conversation_id
+         AND nc.parent_node_id = p.id
+        WHERE p.id IS NULL
+        """
+    )
+    for row in cur.fetchall():
+        errors.append({"type": "node_child_parent_missing", **dict(row)})
+
+    cur.execute(
+        """
+        SELECT nc.conversation_id, nc.parent_node_id, nc.child_node_id, nc.child_index
+        FROM node_children nc
+        LEFT JOIN nodes c
+          ON nc.conversation_id = c.conversation_id
+         AND nc.child_node_id = c.id
+        WHERE c.id IS NULL
+        """
+    )
+    for row in cur.fetchall():
+        errors.append({"type": "node_child_missing", **dict(row)})
+
+    cur.execute(
+        """
+        SELECT c.id AS conversation_id, c.message_count, COUNT(m.id) AS actual_message_count
+        FROM conversations c
+        LEFT JOIN messages m
+          ON c.id = m.conversation_id
+        GROUP BY c.id, c.message_count
+        HAVING COALESCE(c.message_count, 0) != COUNT(m.id)
+        """
+    )
+    for row in cur.fetchall():
+        errors.append({"type": "conversation_message_count_mismatch", **dict(row)})
+
+    cur.execute(
+        """
+        SELECT
+            c.id AS conversation_id,
+            c.message_count_main_path,
+            COALESCE(SUM(CASE WHEN m.is_in_main_path = 1 THEN 1 ELSE 0 END), 0) AS actual_main_path_count
+        FROM conversations c
+        LEFT JOIN messages m
+          ON c.id = m.conversation_id
+        GROUP BY c.id, c.message_count_main_path
+        HAVING COALESCE(c.message_count_main_path, 0) != COALESCE(SUM(CASE WHEN m.is_in_main_path = 1 THEN 1 ELSE 0 END), 0)
+        """
+    )
+    for row in cur.fetchall():
+        errors.append({"type": "conversation_main_path_count_mismatch", **dict(row)})
+
+    cur.execute(
+        """
+        SELECT m.conversation_id, m.id AS message_id
+        FROM messages m
+        LEFT JOIN message_fts f
+          ON m.conversation_id = f.conversation_id
+         AND m.id = f.message_id
+        WHERE COALESCE(m.text, '') != ''
+          AND f.message_id IS NULL
+        """
+    )
+    for row in cur.fetchall():
+        errors.append({"type": "missing_message_fts_row", **dict(row)})
+
+    cur.execute(
+        """
+        SELECT f.conversation_id, f.message_id
+        FROM message_fts f
+        LEFT JOIN messages m
+          ON f.conversation_id = m.conversation_id
+         AND f.message_id = m.id
+        WHERE m.id IS NULL
+        """
+    )
+    for row in cur.fetchall():
+        errors.append({"type": "orphan_message_fts_row", **dict(row)})
+
+    cur.execute(
+        """
+        SELECT
+            c.id AS conversation_id,
+            c.run_id AS canonical_run_id,
+            COALESCE(SUM(CASE WHEN cr.is_canonical_snapshot = 1 THEN 1 ELSE 0 END), 0) AS snapshot_count,
+            MAX(CASE WHEN cr.is_canonical_snapshot = 1 THEN cr.run_id END) AS snapshot_run_id
+        FROM conversations c
+        LEFT JOIN conversation_runs cr
+          ON c.id = cr.conversation_id
+        GROUP BY c.id, c.run_id
+        HAVING snapshot_count != 1 OR snapshot_run_id != c.run_id
+        """
+    )
+    for row in cur.fetchall():
+        errors.append({"type": "canonical_snapshot_marker_mismatch", **dict(row)})
+
     conn.close()
     result = {"ok": len(errors) == 0, "errors": errors}
     if args.format == "json":

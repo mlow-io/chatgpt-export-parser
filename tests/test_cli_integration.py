@@ -1,8 +1,10 @@
 import json
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
+import zipfile
 from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
@@ -102,6 +104,81 @@ class CLIIntegrationTests(unittest.TestCase):
                 cur.execute("SELECT run_id FROM runs")
                 runs = cur.fetchall()
                 self.assertEqual(runs, [("canonical_run",)])
+
+    def test_zip_input_matches_standard_flow(self):
+        sample = [_make_simple_conv("zip_test")]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            json_path = os.path.join(tmpdir, "conversations.json")
+            with open(json_path, "w", encoding="utf-8") as handle:
+                json.dump(sample, handle)
+
+            zip_path = os.path.join(tmpdir, "export.zip")
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.write(json_path, arcname="conversations.json")
+
+            db_path = os.path.join(tmpdir, "zip.db")
+            args = SimpleNamespace(
+                command="parse-and-ingest",
+                inputs=[zip_path],
+                db=db_path,
+                run_id="zip_run",
+                mode="skip_existing",
+                streaming=True,
+            )
+            logger = setup_logging(None, verbose=False)
+
+            run_canonical_ingest(args, logger)
+
+            with closing(sqlite3.connect(db_path)) as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT id, run_id, message_count FROM conversations")
+                rows = cur.fetchall()
+                self.assertEqual(rows, [("zip_test", "zip_run", 1)])
+
+    def test_streaming_and_non_streaming_ingest_produce_same_rows(self):
+        sample = [_make_simple_conv("stream_a"), _make_simple_conv("stream_b")]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            export_path = os.path.join(tmpdir, "export.json")
+            with open(export_path, "w", encoding="utf-8") as handle:
+                json.dump(sample, handle)
+
+            logger = setup_logging(None, verbose=False)
+            streaming_db = os.path.join(tmpdir, "streaming.db")
+            non_streaming_db = os.path.join(tmpdir, "non_streaming.db")
+
+            run_canonical_ingest(
+                SimpleNamespace(
+                    command="parse-and-ingest",
+                    inputs=[export_path],
+                    db=streaming_db,
+                    run_id="streaming_run",
+                    mode="skip_existing",
+                    streaming=True,
+                ),
+                logger,
+            )
+            run_canonical_ingest(
+                SimpleNamespace(
+                    command="parse-and-ingest",
+                    inputs=[export_path],
+                    db=non_streaming_db,
+                    run_id="non_streaming_run",
+                    mode="skip_existing",
+                    streaming=False,
+                ),
+                logger,
+            )
+
+            with closing(sqlite3.connect(streaming_db)) as streaming_conn, closing(sqlite3.connect(non_streaming_db)) as non_streaming_conn:
+                streaming_rows = streaming_conn.execute(
+                    "SELECT id, title, message_count, message_count_main_path FROM conversations ORDER BY id"
+                ).fetchall()
+                non_streaming_rows = non_streaming_conn.execute(
+                    "SELECT id, title, message_count, message_count_main_path FROM conversations ORDER BY id"
+                ).fetchall()
+                self.assertEqual(streaming_rows, non_streaming_rows)
 
 
 if __name__ == "__main__":
