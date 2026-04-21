@@ -180,6 +180,104 @@ class CLIIntegrationTests(unittest.TestCase):
                 ).fetchall()
                 self.assertEqual(streaming_rows, non_streaming_rows)
 
+    def test_export_folder_with_split_conversation_json_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with open(os.path.join(tmpdir, "conversations-001.json"), "w", encoding="utf-8") as handle:
+                json.dump([_make_simple_conv("folder_b")], handle)
+            with open(os.path.join(tmpdir, "conversations-000.json"), "w", encoding="utf-8") as handle:
+                json.dump([_make_simple_conv("folder_a")], handle)
+            with open(os.path.join(tmpdir, "user.json"), "w", encoding="utf-8") as handle:
+                json.dump({"ignored": True}, handle)
+            with open(os.path.join(tmpdir, "chat.html"), "w", encoding="utf-8") as handle:
+                handle.write("<html><script>var jsonData = [];</script></html>")
+
+            db_path = os.path.join(tmpdir, "folder.db")
+            trace_path = os.path.join(tmpdir, "trace.json")
+            args = SimpleNamespace(
+                command="parse-and-ingest",
+                inputs=[tmpdir],
+                db=db_path,
+                run_id="folder_run",
+                mode="skip_existing",
+                streaming=True,
+                trace_run=trace_path,
+            )
+            logger = setup_logging(None, verbose=False)
+
+            result = run_canonical_ingest(args, logger)
+
+            self.assertFalse(result.get("failed"))
+            with closing(sqlite3.connect(db_path)) as conn:
+                rows = conn.execute("SELECT id FROM conversations ORDER BY id").fetchall()
+            self.assertEqual(rows, [("folder_a",), ("folder_b",)])
+
+            with open(trace_path, "r", encoding="utf-8") as handle:
+                trace = json.load(handle)
+            self.assertEqual(len(trace["discovered_sources"]), 2)
+            self.assertEqual([source["path"].split(os.sep)[-1] for source in trace["discovered_sources"]], ["conversations-000.json", "conversations-001.json"])
+            self.assertEqual([row["conversations_seen"] for row in trace["source_results"]], [1, 1])
+            self.assertEqual(trace["diagnostics"][0]["kind"], "chat_html")
+
+    def test_zip_with_split_conversation_json_files(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            first = os.path.join(tmpdir, "conversations-000.json")
+            second = os.path.join(tmpdir, "conversations-001.json")
+            with open(first, "w", encoding="utf-8") as handle:
+                json.dump([_make_simple_conv("zip_a")], handle)
+            with open(second, "w", encoding="utf-8") as handle:
+                json.dump([_make_simple_conv("zip_b")], handle)
+
+            zip_path = os.path.join(tmpdir, "split.zip")
+            with zipfile.ZipFile(zip_path, "w") as archive:
+                archive.write(second, arcname="nested/conversations-001.json")
+                archive.write(first, arcname="nested/conversations-000.json")
+
+            db_path = os.path.join(tmpdir, "zip_split.db")
+            args = SimpleNamespace(
+                command="parse-and-ingest",
+                inputs=[zip_path],
+                db=db_path,
+                run_id="zip_split_run",
+                mode="skip_existing",
+                streaming=True,
+                trace_run=None,
+            )
+            logger = setup_logging(None, verbose=False)
+
+            result = run_canonical_ingest(args, logger)
+
+            self.assertFalse(result.get("failed"))
+            with closing(sqlite3.connect(db_path)) as conn:
+                rows = conn.execute("SELECT id FROM conversations ORDER BY id").fetchall()
+            self.assertEqual(rows, [("zip_a",), ("zip_b",)])
+
+    def test_chat_html_input_is_diagnostic_not_canonical_source(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            html_path = os.path.join(tmpdir, "chat.html")
+            trace_path = os.path.join(tmpdir, "trace.json")
+            with open(html_path, "w", encoding="utf-8") as handle:
+                handle.write('<html><script>var jsonData = [{"id": "html_conv", "create_time": 1.0}];</script></html>')
+
+            result = run_canonical_ingest(
+                SimpleNamespace(
+                    command="parse-and-ingest",
+                    inputs=[html_path],
+                    db=os.path.join(tmpdir, "html.db"),
+                    run_id="html_run",
+                    mode="skip_existing",
+                    streaming=True,
+                    trace_run=trace_path,
+                ),
+                setup_logging(None, verbose=False),
+            )
+
+            self.assertTrue(result.get("failed"))
+            self.assertFalse(os.path.exists(os.path.join(tmpdir, "html.db")))
+            with open(trace_path, "r", encoding="utf-8") as handle:
+                trace = json.load(handle)
+            self.assertEqual(trace["diagnostics"][0]["kind"], "chat_html")
+            self.assertEqual(trace["diagnostics"][0]["embedded_conversation_count"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

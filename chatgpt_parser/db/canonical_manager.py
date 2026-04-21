@@ -174,6 +174,7 @@ class CanonicalManager:
         self.logger = logging.getLogger(__name__)
         self.stats = defaultdict(int)
         self._active_run_id: Optional[str] = None
+        self.auto_commit = True
 
     def _init_schema(self) -> None:
         cur = self.conn.cursor()
@@ -301,7 +302,8 @@ class CanonicalManager:
 
         self.stats["conversations"] += 1
         self.stats["messages"] += len(all_messages)
-        self.conn.commit()
+        if self.auto_commit:
+            self.conn.commit()
 
     def _collect_message_rows(
         self,

@@ -9,7 +9,7 @@ from . import commands
 
 def _add_ingest_arguments(command_parser: argparse.ArgumentParser, help_text: str) -> None:
     command_parser.description = help_text
-    command_parser.add_argument("inputs", nargs="+", help="Input JSON or ZIP files")
+    command_parser.add_argument("inputs", nargs="+", help="Input JSON files, export folders, ZIP files, or chat.html diagnostic targets")
     command_parser.add_argument("--db", required=True, help="Path to canonical SQLite DB")
     command_parser.add_argument("--run-id", help="Manual run ID for provenance")
     command_parser.add_argument(
@@ -19,6 +19,10 @@ def _add_ingest_arguments(command_parser: argparse.ArgumentParser, help_text: st
         help="Canonical ingest keeps append/skip semantics for existing run IDs.",
     )
     command_parser.add_argument("--no-streaming", dest="streaming", action="store_false")
+    command_parser.add_argument(
+        "--trace-run",
+        help="Write a JSON trace describing input discovery, ingest mechanics, and per-source outcomes.",
+    )
     command_parser.set_defaults(streaming=True)
 
 
@@ -115,8 +119,9 @@ def main():
 
     if args.command in {"canonical-ingest", "parse-and-ingest"}:
         result = commands.run_canonical_ingest(args, logger)
+        failed = bool(result and result.get("failed"))
         summary = {
-            "status": "canonical_ingested",
+            "status": "failed" if failed else "canonical_ingested",
             "db": args.db,
             "run_id": result.get("run_id") if result else args.run_id,
         }
@@ -125,6 +130,8 @@ def main():
                 "stats": result.get("stats", {}),
                 "elapsed_sec": result.get("elapsed_sec"),
                 "skipped": result.get("skipped", False),
+                "source_errors": result.get("source_errors", 0),
+                "trace_path": result.get("trace_path"),
             })
     elif args.command == "query":
         commands.run_query(args, logger)
