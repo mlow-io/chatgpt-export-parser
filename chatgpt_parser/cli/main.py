@@ -1,6 +1,7 @@
 import argparse
 import json
 
+from ..api import ingest_exports, inspect_inputs, parser_contract
 from ..core import exporter
 from ..db import maintenance
 from ..utils.logging import setup_logging
@@ -113,26 +114,37 @@ def main():
     p_restore.add_argument("--db", required=True)
     p_restore.add_argument("--force", action="store_true")
 
+    subparsers.add_parser("contract", help="Print the versioned Python/native integration contract")
+
+    p_inspect = subparsers.add_parser("inspect-inputs", help="Inspect export inputs without changing a database")
+    p_inspect.add_argument("inputs", nargs="+")
+
     args = parser.parse_args()
     logger = setup_logging(None, verbose=args.verbose and not args.quiet and not args.json)
     summary = {}
 
     if args.command in {"canonical-ingest", "parse-and-ingest"}:
-        result = commands.run_canonical_ingest(args, logger)
-        failed = bool(result and result.get("failed"))
+        result = ingest_exports(
+            args.inputs,
+            args.db,
+            run_id=args.run_id,
+            streaming=args.streaming,
+            mode=args.mode,
+            trace_path=args.trace_run,
+            logger=logger,
+            raise_on_failure=False,
+        )
         summary = {
-            "status": "failed" if failed else "canonical_ingested",
-            "db": args.db,
-            "run_id": result.get("run_id") if result else args.run_id,
+            "status": "failed" if result.failed else "canonical_ingested",
+            "db": result.database,
+            "run_id": result.run_id,
+            "stats": result.stats,
+            "elapsed_sec": result.elapsed_seconds,
+            "skipped": result.skipped,
+            "source_errors": result.source_errors,
+            "diagnostics": result.diagnostics,
+            "trace_path": result.trace_path,
         }
-        if result:
-            summary.update({
-                "stats": result.get("stats", {}),
-                "elapsed_sec": result.get("elapsed_sec"),
-                "skipped": result.get("skipped", False),
-                "source_errors": result.get("source_errors", 0),
-                "trace_path": result.get("trace_path"),
-            })
     elif args.command == "query":
         commands.run_query(args, logger)
         return
@@ -160,6 +172,12 @@ def main():
     elif args.command == "restore-db":
         maintenance.run_restore_db(args, logger)
         summary = {"status": "restored", "db": args.db}
+    elif args.command == "contract":
+        print(json.dumps(parser_contract(), indent=2))
+        return
+    elif args.command == "inspect-inputs":
+        print(json.dumps(inspect_inputs(args.inputs).to_dict(), indent=2))
+        return
 
     if args.json:
         print(json.dumps(summary, indent=2))

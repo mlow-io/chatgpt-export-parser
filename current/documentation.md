@@ -9,12 +9,16 @@
 
 ## What This Project Is
 
-- A local-first Python CLI for converting ChatGPT export JSON/ZIP files into a canonical SQLite archive.
+- A local-first Python library and CLI for converting ChatGPT export JSON/ZIP files into a canonical SQLite archive.
 - A repo whose primary product story is the canonical archive, with query, search, export, provenance inspection, and maintenance commands around that archive.
 
 ## Current State
 
 - Complete:
+  - installable package metadata and a `chatgpt-parser` console entry point exist
+  - the supported application boundary is `chatgpt_parser.api`
+  - `contract` and `inspect-inputs` provide machine-readable native-client preflight
+  - direct library tests cover split folders, ZIPs, diagnostic-only input, and the package-module contract
   - canonical archive ingestion exists and is the main workflow
   - baseline unittest suite passes on the starting state
   - `current/` long-horizon control stack has been created
@@ -30,7 +34,7 @@
   - README, CLI spec, schema notes, and roadmap docs aligned with the verified implementation
   - clean-room workflow verified across ingest, query, search, export, validation, provenance listing, dump, and restore
 - In progress:
-  - none
+  - AtlasBench GPT integration against contract version 1
 - Remaining frontier:
   - future incremental hardening only; the current horizon is complete
 
@@ -38,6 +42,8 @@
 
 - Canonical ingest:
   `python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./chatgpt_export.db`
+- Library/native contract:
+  `python3 -m chatgpt_parser --json contract`
 - Query:
   `python3 ChatGPT_Export_parser.py query --db ./chatgpt_export.db --type conversations --limit 5`
 - Search:

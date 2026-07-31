@@ -1,6 +1,6 @@
 # ChatGPT Export Parser
 
-Local-first CLI for turning ChatGPT exports into one cumulative, canonical SQLite archive.
+Local-first Python library and CLI for turning ChatGPT exports into one cumulative, canonical SQLite archive.
 
 This repo now has one primary data story:
 
@@ -26,47 +26,82 @@ This repo includes synthetic demo data.
 
 ```bash
 # Build a canonical archive from the demo export
-python3 ChatGPT_Export_parser.py parse-and-ingest \
+chatgpt-parser parse-and-ingest \
   demo/demo_conversations.json \
   --db demo/demo_chatgpt_canonical.db \
   --run-id demo_run
 
 # Search the canonical archive
-python3 ChatGPT_Export_parser.py search \
+chatgpt-parser search \
   --db demo/demo_chatgpt_canonical.db \
   --q "Branch"
 
 # Export a conversation to Markdown
-python3 ChatGPT_Export_parser.py export-conversation \
+chatgpt-parser export-conversation \
   --db demo/demo_chatgpt_canonical.db \
   --conversation-id demo_conv_1 \
   --output my_chat.md
 ```
 
 `parse-and-ingest` is the standard command. `canonical-ingest` remains as an explicit alias for the same workflow.
+The historical `ChatGPT_Export_parser.py` entry point remains for compatibility,
+but new automation and applications should use the installed command, the
+package module, or the public Python API.
 
 ## Installation
 
 No third-party dependencies are required.
 
 ```bash
-git clone https://github.com/matthewb-io/chatgpt-export-parser.git
+git clone https://github.com/mlow-io/chatgpt-export-parser.git
 cd chatgpt-export-parser
-python3 --version
+python3 -m pip install -e .
+chatgpt-parser contract
 ```
+
+Python 3.10 or newer is required. The package has no runtime dependencies
+outside the Python standard library.
+
+## Python Library Contract
+
+Applications should call the public package API rather than importing CLI or
+database internals:
+
+```python
+from chatgpt_parser import ingest_exports, inspect_inputs, parser_contract
+
+inspection = inspect_inputs(["/path/to/chatgpt-export.zip"])
+if inspection.can_ingest:
+    result = ingest_exports(
+        ["/path/to/chatgpt-export.zip"],
+        "/path/to/chatgpt-archive.sqlite3",
+    )
+    print(result.stats)
+```
+
+The versioned native-client contract is available as Python data or JSON:
+
+```bash
+python3 -m chatgpt_parser --json contract
+python3 -m chatgpt_parser --json inspect-inputs /path/to/export
+```
+
+AtlasBench GPT invokes the package module through this machine-readable
+process boundary. It does not duplicate export parsing logic and does not call
+the legacy `ChatGPT_Export_parser.py` shim.
 
 ## Standard Workflow
 
 ### 1. Ingest one or more exports into a canonical archive
 
 ```bash
-python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/conversations.json \
+chatgpt-parser parse-and-ingest /path/to/conversations.json \
   --db my_chats.db
 
-python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.zip \
+chatgpt-parser parse-and-ingest /path/to/export.zip \
   --db my_chats.db
 
-python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/october.json /path/to/november.json \
+chatgpt-parser parse-and-ingest /path/to/october.json /path/to/november.json \
   --db my_chats.db \
   --run-id 2026-04-06T12-00-00Z
 ```
@@ -81,7 +116,7 @@ Behavior:
 ### 2. Search
 
 ```bash
-python3 ChatGPT_Export_parser.py search --db my_chats.db --q "quantum computing"
+chatgpt-parser search --db my_chats.db --q "quantum computing"
 ```
 
 Optional filters:
@@ -94,9 +129,9 @@ Optional filters:
 ### 3. Query
 
 ```bash
-python3 ChatGPT_Export_parser.py query --db my_chats.db --type conversations --limit 10
+chatgpt-parser query --db my_chats.db --type conversations --limit 10
 
-python3 ChatGPT_Export_parser.py query \
+chatgpt-parser query \
   --db my_chats.db \
   --type conversation_detail \
   --conversation-id <UUID> \
@@ -112,13 +147,13 @@ Notes:
 ### 4. Export
 
 ```bash
-python3 ChatGPT_Export_parser.py export-conversation \
+chatgpt-parser export-conversation \
   --db my_chats.db \
   --conversation-id <UUID> \
   --output conversation.md \
   --frontmatter
 
-python3 ChatGPT_Export_parser.py export-conversations \
+chatgpt-parser export-conversations \
   --db my_chats.db \
   --query "postgres" \
   --limit 10 \
@@ -134,8 +169,8 @@ Format behavior:
 ### 5. Validate and inspect provenance
 
 ```bash
-python3 ChatGPT_Export_parser.py check --db my_chats.db --format json
-python3 ChatGPT_Export_parser.py list-runs --db my_chats.db
+chatgpt-parser check --db my_chats.db --format json
+chatgpt-parser list-runs --db my_chats.db
 ```
 
 `list-runs` is now provenance inspection for the canonical archive, not a separate legacy mode.
@@ -145,8 +180,8 @@ python3 ChatGPT_Export_parser.py list-runs --db my_chats.db
 ### 6. Dump and restore
 
 ```bash
-python3 ChatGPT_Export_parser.py dump-db --db my_chats.db --output my_chats.sql
-python3 ChatGPT_Export_parser.py restore-db --input my_chats.sql --db restored_chats.db
+chatgpt-parser dump-db --db my_chats.db --output my_chats.sql
+chatgpt-parser restore-db --input my_chats.sql --db restored_chats.db
 ```
 
 The dump/restore flow preserves the archive including the FTS-backed search surface.
@@ -229,11 +264,11 @@ python3 -m unittest discover -s tests
 Useful smoke checks:
 
 ```bash
-python3 ChatGPT_Export_parser.py parse-and-ingest demo/demo_conversations.json --db demo/demo_chatgpt_canonical.db --run-id demo_run
-python3 ChatGPT_Export_parser.py query --db demo/demo_chatgpt_canonical.db --type conversations --limit 2 --format json
-python3 ChatGPT_Export_parser.py search --db demo/demo_chatgpt_canonical.db --q "branch" --format json
-python3 ChatGPT_Export_parser.py export-conversation --db demo/demo_chatgpt_canonical.db --conversation-id demo_conv_1 --format text
-python3 ChatGPT_Export_parser.py check --db demo/demo_chatgpt_canonical.db --format json
+chatgpt-parser parse-and-ingest demo/demo_conversations.json --db demo/demo_chatgpt_canonical.db --run-id demo_run
+chatgpt-parser query --db demo/demo_chatgpt_canonical.db --type conversations --limit 2 --format json
+chatgpt-parser search --db demo/demo_chatgpt_canonical.db --q "branch" --format json
+chatgpt-parser export-conversation --db demo/demo_chatgpt_canonical.db --conversation-id demo_conv_1 --format text
+chatgpt-parser check --db demo/demo_chatgpt_canonical.db --format json
 ```
 
 For deeper schema details, see [SCHEMA_AND_SPEC.md](SCHEMA_AND_SPEC.md) and [CLI_SPEC.md](CLI_SPEC.md).
