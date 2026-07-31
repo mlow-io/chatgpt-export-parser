@@ -212,6 +212,9 @@ Important properties:
 - `run_id` is preserved for provenance but is not the primary identity
 - later exports can supersede earlier truncated snapshots without duplicating the logical conversation row
 - branch structure is preserved via `nodes` and `node_children`
+- rich content is normalized into the existing schema-v2 tables: text URLs and citation metadata in `links`, image/file references in `attachments`, and linked calls/results in the tool tables
+- attachment references remain present with `availability: unresolved` when the export does not include a readable local file; consumers must not fetch remote resources implicitly
+- rich rows use stable IDs so overlapping canonical imports update rather than duplicate them
 
 Useful derived conversation fields also live on the canonical `conversations` table:
 
