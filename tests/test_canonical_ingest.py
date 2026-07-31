@@ -227,6 +227,103 @@ def _make_rich_conv(conv_id="rich_conv"):
     }
 
 
+def _make_rich_content(conv_id="rich_conv"):
+    user = f"node_{conv_id}_user"
+    answer = f"node_{conv_id}_answer"
+    call = f"node_{conv_id}_call"
+    result = f"node_{conv_id}_result"
+    return {
+        "id": conv_id,
+        "title": "Rich content",
+        "create_time": 1000.0,
+        "update_time": 1400.0,
+        "current_node": result,
+        "mapping": {
+            user: {
+                "id": user,
+                "parent": None,
+                "children": [answer],
+                "message": {
+                    "id": f"msg_{conv_id}_user",
+                    "author": {"role": "user"},
+                    "content": {
+                        "content_type": "multimodal_text",
+                        "parts": [
+                            "What is in this image and file?",
+                            {
+                                "content_type": "image_asset_pointer",
+                                "asset_pointer": "file-service://missing-image",
+                                "size_bytes": 1234,
+                                "width": 640,
+                                "height": 480,
+                            },
+                        ],
+                    },
+                    "create_time": 1000.0,
+                    "metadata": {
+                        "attachments": [
+                            {
+                                "id": "file-missing-pdf",
+                                "name": "report.pdf",
+                                "mime_type": "application/pdf",
+                                "size": 4567,
+                            }
+                        ]
+                    },
+                },
+            },
+            answer: {
+                "id": answer,
+                "parent": user,
+                "children": [call],
+                "message": {
+                    "id": f"msg_{conv_id}_answer",
+                    "author": {"role": "assistant"},
+                    "content": {"content_type": "text", "parts": ["See https://example.com/direct"]},
+                    "create_time": 1100.0,
+                    "metadata": {
+                        "content_references": [
+                            {"type": "webpage", "url": "https://example.com/reference", "title": "Reference"}
+                        ],
+                        "citations": [
+                            {
+                                "start_ix": 0,
+                                "end_ix": 8,
+                                "metadata": {"type": "webpage", "url": "https://example.org/citation", "title": "Citation"},
+                            }
+                        ],
+                    },
+                },
+            },
+            call: {
+                "id": call,
+                "parent": answer,
+                "children": [result],
+                "message": {
+                    "id": f"msg_{conv_id}_call",
+                    "author": {"role": "assistant"},
+                    "recipient": "browser.search",
+                    "content": {"content_type": "code", "text": "{\"query\": \"atlas\"}"},
+                    "create_time": 1200.0,
+                    "metadata": {"request_id": "request-1"},
+                },
+            },
+            result: {
+                "id": result,
+                "parent": call,
+                "children": [],
+                "message": {
+                    "id": f"msg_{conv_id}_result",
+                    "author": {"role": "tool", "name": "browser.search"},
+                    "content": {"content_type": "execution_output", "text": "{\"ok\": true}"},
+                    "create_time": 1300.0,
+                    "metadata": ["malformed", "metadata"],
+                },
+            },
+        },
+    }
+
+
 class CanonicalArchiveSchemaTests(unittest.TestCase):
     def test_schema_creates_chatgpt_native_tables(self):
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as handle:
@@ -432,6 +529,53 @@ class CanonicalArchiveIngestTests(unittest.TestCase):
                     [tuple(row) for row in tool_results],
                     [("msg_rich_conv_tool_result", "72 and sunny")],
                 )
+        finally:
+            os.unlink(db_path)
+
+    def test_rich_content_populates_existing_schema_and_links_tool_exchange(self):
+        db_path = self._ingest_runs([("run_rich", [_make_rich_content()])])
+        try:
+            with self._open(db_path) as conn:
+                links = conn.execute(
+                    "SELECT source, url, display_text FROM links WHERE conversation_id = 'rich_conv' ORDER BY source, url"
+                ).fetchall()
+                self.assertEqual(len(links), 3)
+                self.assertEqual({row[0] for row in links}, {"message_text", "content_reference", "citation"})
+
+                attachments = conn.execute(
+                    "SELECT type, filename, mime_type, filesize_bytes, source_ref, metadata FROM attachments WHERE conversation_id = 'rich_conv' ORDER BY type"
+                ).fetchall()
+                self.assertEqual(len(attachments), 2)
+                self.assertEqual({row[0] for row in attachments}, {"image", "file"})
+                self.assertIn("report.pdf", {row[1] for row in attachments})
+                self.assertTrue(all(json.loads(row[5])["availability"] == "unresolved" for row in attachments))
+
+                tool_call = conn.execute(
+                    "SELECT id, tool_name, arguments_json FROM tool_calls WHERE conversation_id = 'rich_conv'"
+                ).fetchone()
+                self.assertEqual(tool_call[1], "browser.search")
+                self.assertEqual(json.loads(tool_call[2]), {"query": "atlas"})
+
+                tool_result = conn.execute(
+                    "SELECT tool_call_id, result_json, raw_result, metadata FROM tool_results WHERE conversation_id = 'rich_conv'"
+                ).fetchone()
+                self.assertEqual(tool_result[0], tool_call[0])
+                self.assertEqual(json.loads(tool_result[1]), {"ok": True})
+                self.assertEqual(json.loads(tool_result[3]), {})
+        finally:
+            os.unlink(db_path)
+
+    def test_rich_content_is_deduplicated_across_reimport_runs(self):
+        db_path = self._ingest_runs([
+            ("run_rich_a", [_make_rich_content()]),
+            ("run_rich_b", [_make_rich_content()]),
+        ])
+        try:
+            with self._open(db_path) as conn:
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM links WHERE conversation_id = 'rich_conv'").fetchone()[0], 3)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM attachments WHERE conversation_id = 'rich_conv'").fetchone()[0], 2)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM tool_calls WHERE conversation_id = 'rich_conv'").fetchone()[0], 1)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM tool_results WHERE conversation_id = 'rich_conv'").fetchone()[0], 1)
         finally:
             os.unlink(db_path)
 

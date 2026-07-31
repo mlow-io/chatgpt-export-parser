@@ -39,6 +39,14 @@ def _stable_id(*parts: object) -> str:
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
+def _dict(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _list(value: Any) -> List[Any]:
+    return value if isinstance(value, list) else []
+
+
 def _clean_text(value: Optional[str], max_chars: int = 400) -> Optional[str]:
     if not value:
         return None
@@ -52,15 +60,15 @@ def _clean_text(value: Optional[str], max_chars: int = 400) -> Optional[str]:
 
 
 def _extract_message_text(message: Dict[str, Any]) -> Optional[str]:
-    content = message.get("content") or {}
-    if not isinstance(content, dict):
+    content = _dict(message.get("content"))
+    if not content:
         return None
     content_type = content.get("content_type")
     if content_type == "text":
         return "\n\n".join(str(part) for part in content.get("parts") or [])
     if content_type == "multimodal_text":
         parts = []
-        for part in content.get("parts") or []:
+        for part in _list(content.get("parts")):
             if isinstance(part, str):
                 parts.append(part)
             elif isinstance(part, dict) and isinstance(part.get("text"), str):
@@ -128,7 +136,7 @@ def _graph(mapping: Dict[str, Dict[str, Any]]) -> Tuple[Dict[str, Optional[str]]
     parents: Dict[str, Optional[str]] = {}
     children: Dict[str, List[str]] = defaultdict(list)
     for node_id, node in mapping.items():
-        if node is None:
+        if not isinstance(node, dict):
             continue
         parent_id = node.get("parent")
         parents[node_id] = parent_id
@@ -324,12 +332,12 @@ class CanonicalManager:
             message = node.get("message")
             if not isinstance(message, dict):
                 continue
-            author = message.get("author") or {}
+            author = _dict(message.get("author"))
             role = author.get("role")
-            content = message.get("content") or {}
+            content = _dict(message.get("content"))
             content_type = content.get("content_type")
             recipient = message.get("recipient")
-            metadata = message.get("metadata") or {}
+            metadata = _dict(message.get("metadata"))
             if metadata.get("model_slug"):
                 models_used.add(metadata["model_slug"])
             if metadata.get("default_model_slug"):
@@ -394,8 +402,8 @@ class CanonicalManager:
         last_assistant = next((row["text"] for row in reversed(ordered_messages) if row.get("role") == "assistant" and row.get("text")), None)
         keyword_text = _extract_keywords(row.get("text") for row in ordered_messages)
         timestamps = [row["created_at"] for row in all_messages if row.get("created_at")]
-        safe_urls = conv.get("safe_urls") or []
-        blocked_urls = conv.get("blocked_urls") or []
+        safe_urls = _list(conv.get("safe_urls"))
+        blocked_urls = _list(conv.get("blocked_urls"))
 
         return {
             "id": conv_id,
@@ -444,7 +452,7 @@ class CanonicalManager:
         canonical_snapshot: bool,
     ) -> None:
         for node_id, node in mapping.items():
-            if node is None:
+            if not isinstance(node, dict):
                 continue
             message = node.get("message") if isinstance(node.get("message"), dict) else None
             node_row = {
@@ -698,7 +706,7 @@ class CanonicalManager:
             )
 
     def _ingest_links(self, conv: Dict[str, Any], conversation_id: str, run_id: str, messages: List[Dict[str, Any]]) -> None:
-        safe_urls = conv.get("safe_urls") or []
+        safe_urls = _list(conv.get("safe_urls"))
         for index, url in enumerate(safe_urls):
             scheme, domain, path, query = parse_url(url)
             row = {
@@ -760,35 +768,84 @@ class CanonicalManager:
                 )
                 self.stats["links"] += 1
 
+            metadata = _dict(json.loads(message.get("metadata") or "{}"))
+            references = [
+                ("content_reference", reference)
+                for reference in _list(metadata.get("content_references"))
+            ] + [
+                ("citation", reference)
+                for reference in _list(metadata.get("citations"))
+            ]
+            for index, (source, reference) in enumerate(references):
+                reference = _dict(reference)
+                nested = _dict(reference.get("metadata"))
+                url = reference.get("url") or nested.get("url")
+                if not isinstance(url, str) or not url.strip():
+                    continue
+                url = url.strip()
+                scheme, domain, path, query = parse_url(url)
+                row = {
+                    "conversation_id": conversation_id,
+                    "id": _stable_id(conversation_id, message["id"], source, index, url),
+                    "run_id": message["run_id"],
+                    "message_id": message["id"],
+                    "source": source,
+                    "url": url,
+                    "display_text": reference.get("title") or nested.get("title") or reference.get("text") or url,
+                    "position_start": reference.get("start_idx", reference.get("start_ix")),
+                    "position_end": reference.get("end_idx", reference.get("end_ix")),
+                    "scheme": scheme,
+                    "domain": domain,
+                    "path": path,
+                    "query": query,
+                    "kind": reference.get("type") or nested.get("type") or "citation",
+                    "metadata": _json(reference),
+                }
+                self._upsert_row(
+                    "links",
+                    [
+                        "conversation_id", "id", "run_id", "message_id", "source", "url",
+                        "display_text", "position_start", "position_end", "scheme", "domain",
+                        "path", "query", "kind", "metadata",
+                    ],
+                    row,
+                )
+                self.stats["links"] += 1
+
     def _ingest_attachments(self, conversation_id: str, run_id: str, mapping: Dict[str, Dict[str, Any]]) -> None:
-        for node in mapping.values():
-            if node is None:
+        for node_key, node in mapping.items():
+            if not isinstance(node, dict):
                 continue
             message = node.get("message")
             if not isinstance(message, dict):
                 continue
-            content = message.get("content") or {}
-            if content.get("content_type") != "multimodal_text":
-                continue
-            for index, part in enumerate(content.get("parts") or []):
-                if not (isinstance(part, dict) and part.get("content_type") == "image_asset_pointer"):
+            content = _dict(message.get("content"))
+            metadata = _dict(message.get("metadata"))
+            candidates = [part for part in _list(content.get("parts")) if isinstance(part, dict)]
+            candidates.extend(_dict(attachment) for attachment in _list(metadata.get("attachments")))
+            for index, part in enumerate(candidates):
+                content_type = str(part.get("content_type") or part.get("type") or "file")
+                source_ref = part.get("asset_pointer") or part.get("source_ref") or part.get("id") or part.get("file_id")
+                if not source_ref and not part.get("name") and not part.get("filename"):
                     continue
-                attachment_id = _stable_id(conversation_id, message.get("id"), "attachment", index, part.get("asset_pointer"))
+                attachment_type = "image" if "image" in content_type or str(part.get("mime_type") or "").startswith("image/") else "file"
+                attachment_id = _stable_id(conversation_id, message.get("id"), "attachment", index, source_ref, part.get("name"))
                 row = {
                     "conversation_id": conversation_id,
                     "id": attachment_id,
                     "run_id": run_id,
                     "message_id": message.get("id"),
-                    "type": "image",
-                    "filename": None,
-                    "mime_type": None,
-                    "filesize_bytes": part.get("size_bytes"),
-                    "source_ref": part.get("asset_pointer"),
+                    "type": attachment_type,
+                    "filename": part.get("name") or part.get("filename"),
+                    "mime_type": part.get("mime_type") or part.get("content_type_mime_type"),
+                    "filesize_bytes": part.get("size_bytes") or part.get("size"),
+                    "source_ref": source_ref,
                     "metadata": _json(
                         {
                             "width": part.get("width"),
                             "height": part.get("height"),
-                            **(part.get("metadata") or {}),
+                            "availability": "unresolved",
+                            **_dict(part.get("metadata")),
                         }
                     ),
                 }
@@ -800,15 +857,16 @@ class CanonicalManager:
                 self.stats["attachments"] += 1
 
     def _ingest_tool_rows(self, conversation_id: str, run_id: str, mapping: Dict[str, Dict[str, Any]]) -> None:
-        for node in mapping.values():
-            if node is None:
+        call_id_by_node: Dict[str, str] = {}
+        for node_key, node in mapping.items():
+            if not isinstance(node, dict):
                 continue
             message = node.get("message")
             if not isinstance(message, dict):
                 continue
-            author = message.get("author") or {}
+            author = _dict(message.get("author"))
             role = author.get("role")
-            content = message.get("content") or {}
+            content = _dict(message.get("content"))
             content_type = content.get("content_type")
             recipient = message.get("recipient")
             message_kind = determine_message_kind(role or "", content_type or "", recipient or "", content if isinstance(content, dict) else {})
@@ -821,6 +879,7 @@ class CanonicalManager:
                 except Exception:
                     arguments_json = None
                 tool_call_id = _stable_id(conversation_id, message_id, "tool_call", recipient, raw_args)
+                call_id_by_node[str(node.get("id") or node_key)] = tool_call_id
                 row = {
                     "conversation_id": conversation_id,
                     "id": tool_call_id,
@@ -830,7 +889,7 @@ class CanonicalManager:
                     "call_index": 0,
                     "arguments_json": _json(arguments_json),
                     "raw_arguments": raw_args,
-                    "metadata": _json({}),
+                    "metadata": _json(_dict(message.get("metadata"))),
                 }
                 self._upsert_row(
                     "tool_calls",
@@ -839,18 +898,50 @@ class CanonicalManager:
                 )
                 self.stats["tool_calls"] += 1
 
+        for node_key, node in mapping.items():
+            if not isinstance(node, dict):
+                continue
+            message = node.get("message")
+            if not isinstance(message, dict):
+                continue
+            author = _dict(message.get("author"))
+            content = _dict(message.get("content"))
+            message_kind = determine_message_kind(
+                author.get("role") or "",
+                content.get("content_type") or "",
+                message.get("recipient") or "",
+                content,
+            )
             if message_kind == "tool_result":
-                raw_result = content.get("text") if content.get("content_type") == "execution_output" else _json(content)
+                message_id = message.get("id")
+                raw_result_value = content.get("text") if content.get("content_type") == "execution_output" else content
+                raw_result = raw_result_value if isinstance(raw_result_value, str) else _json(raw_result_value)
+                parsed_result = None
+                if isinstance(raw_result, str):
+                    try:
+                        parsed_result = json.loads(raw_result)
+                    except (TypeError, ValueError):
+                        parsed_result = None
+                parent_id = node.get("parent")
+                tool_call_id = None
+                visited = set()
+                while parent_id and parent_id not in visited:
+                    visited.add(parent_id)
+                    if parent_id in call_id_by_node:
+                        tool_call_id = call_id_by_node[parent_id]
+                        break
+                    parent_node = mapping.get(parent_id)
+                    parent_id = parent_node.get("parent") if isinstance(parent_node, dict) else None
                 tool_result_id = _stable_id(conversation_id, message_id, "tool_result", raw_result)
                 row = {
                     "conversation_id": conversation_id,
                     "id": tool_result_id,
                     "run_id": run_id,
                     "message_id": message_id,
-                    "tool_call_id": None,
-                    "result_json": None,
+                    "tool_call_id": tool_call_id,
+                    "result_json": _json(parsed_result),
                     "raw_result": raw_result,
-                    "metadata": _json({}),
+                    "metadata": _json(_dict(message.get("metadata"))),
                 }
                 self._upsert_row(
                     "tool_results",
