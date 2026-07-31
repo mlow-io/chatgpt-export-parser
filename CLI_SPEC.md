@@ -23,12 +23,35 @@ That archive:
 
 ## Commands
 
+### contract
+
+Print the versioned Python/native integration contract as JSON.
+
+```bash
+python3 -m chatgpt_parser --json contract
+```
+
+The payload includes the package version, contract version, canonical schema
+version, supported input kinds, and operations. Native clients should reject
+unsupported contract versions before starting an import.
+
+### inspect-inputs
+
+Discover canonical JSON sources and diagnostics without changing a database.
+
+```bash
+python3 -m chatgpt_parser --json inspect-inputs /path/to/export.zip
+```
+
+Inputs may be JSON files, export folders, ZIPs, or `chat.html` diagnostic
+targets. `can_ingest` is true only when canonical conversation JSON was found.
+
 ### parse-and-ingest
 
 Standard ingest command.
 
 ```bash
-python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./my_chats.db
+chatgpt-parser parse-and-ingest /path/to/export.json --db ./my_chats.db
 ```
 
 Arguments:
@@ -38,13 +61,15 @@ Arguments:
 - `--run-id ID` optional
 - `--mode skip_existing`
 - `--no-streaming`
+- `--trace-run PATH`
 
 Behavior:
 
-- reads one or more JSON or ZIP exports
+- reads one or more JSON files, split-export folders, or ZIP exports
 - parses conversations directly
 - merges them into the canonical archive
 - records run provenance in `runs`, `conversation_runs`, and `message_runs`
+- emits diagnostics for unsupported or incomplete inputs in JSON mode
 
 ### canonical-ingest
 
@@ -55,7 +80,7 @@ Same flags, same behavior, same canonical archive output.
 ### query
 
 ```bash
-python3 ChatGPT_Export_parser.py query --db ./my_chats.db --type conversations --limit 10
+chatgpt-parser query --db ./my_chats.db --type conversations --limit 10
 ```
 
 Arguments:
@@ -73,7 +98,7 @@ Arguments:
 ### search
 
 ```bash
-python3 ChatGPT_Export_parser.py search --db ./my_chats.db --q "pizza"
+chatgpt-parser search --db ./my_chats.db --q "pizza"
 ```
 
 Arguments:
@@ -91,7 +116,7 @@ Arguments:
 ### export-conversation
 
 ```bash
-python3 ChatGPT_Export_parser.py export-conversation \
+chatgpt-parser export-conversation \
   --db ./my_chats.db \
   --conversation-id <UUID> \
   --output out.md \
