@@ -328,8 +328,9 @@ class CanonicalManager:
                 self.conn.commit()
             return
 
+        conversation_exists = self._conversation_exists(conv_id)
         canonical_snapshot = self._should_replace_conversation_snapshot(conv_id, conversation_row)
-        if canonical_snapshot and self._conversation_exists(conv_id):
+        if canonical_snapshot and conversation_exists:
             removed_message_ids = self._prune_canonical_snapshot(
                 conv_id=conv_id,
                 mapping=mapping,
@@ -339,7 +340,7 @@ class CanonicalManager:
                 metadata = _dict(json.loads(conversation_row["metadata"]))
                 metadata["removed_message_ids"] = removed_message_ids
                 conversation_row["metadata"] = _json(metadata)
-        if canonical_snapshot or not self._conversation_exists(conv_id):
+        if canonical_snapshot or not conversation_exists:
             self._upsert_conversation(conversation_row)
         self._upsert_conversation_run(active_run_id, conversation_row, canonical_snapshot)
         self._upsert_nodes(
@@ -530,11 +531,8 @@ class CanonicalManager:
         removed_node_ids = sorted(existing_node_ids - desired_node_ids)
         removed_message_ids = sorted(existing_message_ids - desired_message_ids)
 
+        self.conn.execute("DELETE FROM message_fts WHERE conversation_id = ?", (conv_id,))
         if removed_message_ids:
-            self.conn.executemany(
-                "DELETE FROM message_fts WHERE conversation_id = ? AND message_id = ?",
-                [(conv_id, message_id) for message_id in removed_message_ids],
-            )
             self.conn.executemany(
                 "DELETE FROM messages WHERE conversation_id = ? AND id = ?",
                 [(conv_id, message_id) for message_id in removed_message_ids],
@@ -622,7 +620,11 @@ class CanonicalManager:
         canonical_snapshot: bool,
     ) -> None:
         for message_row in all_messages:
-            existing = self._row_exists("messages", conv_id, message_row["id"])
+            existing = (
+                False
+                if canonical_snapshot
+                else self._row_exists("messages", conv_id, message_row["id"])
+            )
             if canonical_snapshot or not existing:
                 self._upsert_row(
                     "messages",
@@ -838,10 +840,6 @@ class CanonicalManager:
         )
 
     def _refresh_message_fts(self, *, conversation_id: str, message_id: str, run_id: Optional[str], role: Optional[str], text: str) -> None:
-        self.conn.execute(
-            "DELETE FROM message_fts WHERE conversation_id = ? AND message_id = ?",
-            (conversation_id, message_id),
-        )
         if text:
             self.conn.execute(
                 """

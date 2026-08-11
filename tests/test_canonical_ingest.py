@@ -817,6 +817,29 @@ class CanonicalArchiveIngestTests(unittest.TestCase):
         finally:
             os.unlink(db_path)
 
+    def test_new_conversations_do_not_issue_fts_deletes(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db_path = handle.name
+        handle.close()
+        try:
+            mgr = CanonicalManager(db_path)
+            statements = []
+            mgr.conn.set_trace_callback(statements.append)
+            self.assertTrue(mgr.begin_run("run_new", ["run_new.json"]))
+            mgr.ingest_conversation(_make_extended("new_conv"), "run_new.json", run_id="run_new")
+            mgr.finalize_run()
+            mgr.conn.set_trace_callback(None)
+            mgr.close()
+
+            fts_deletes = [
+                statement
+                for statement in statements
+                if " ".join(statement.upper().split()).startswith("DELETE FROM MESSAGE_FTS")
+            ]
+            self.assertEqual(fts_deletes, [])
+        finally:
+            os.unlink(db_path)
+
 
 if __name__ == "__main__":
     unittest.main()
