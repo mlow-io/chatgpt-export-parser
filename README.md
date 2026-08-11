@@ -16,6 +16,7 @@ The canonical archive is the standard output. It is the database AtlasBench GPT 
 - **Canonical ingest:** overlapping exports merge into one archive instead of creating duplicate conversation copies
 - **Full thread fidelity:** keeps ChatGPT-native conversation, message, and branch structure
 - **Run provenance:** each ingest still gets a `run_id`, stored in `runs`, `conversation_runs`, and `message_runs`
+- **Atomic runs:** if any selected source cannot be completely read, the entire ingest run is rolled back
 - **FTS search:** search message text with SQLite FTS5
 - **Query and export:** inspect conversations, export them to Markdown/text/JSON, or bundle recent chats
 - **Multiple databases:** use any `--db` path you want; separate databases remain separate archives
@@ -112,6 +113,7 @@ Behavior:
 - branches inside a conversation are preserved as distinct nodes/edges
 - each ingest run is still recorded for provenance
 - choosing a different `--db` path creates or extends a different canonical archive
+- mixed valid/corrupt selections fail as a unit; callers receive structured `source_results` and the existing archive is preserved
 
 ### 2. Search
 

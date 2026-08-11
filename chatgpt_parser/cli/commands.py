@@ -259,6 +259,7 @@ def run_canonical_ingest(args, logger: logging.Logger):
 
         start_time = time.time()
         source_errors = 0
+        conversation_errors = 0
 
         for source in sources:
             label = _source_label(source)
@@ -271,37 +272,58 @@ def run_canonical_ingest(args, logger: logging.Logger):
                         mgr.ingest_conversation(conv, label, run_id=run_id)
                     except Exception:
                         source_result["conversation_errors"] += 1
+                        conversation_errors += 1
                         logger.exception(f"Error processing conversation in {label}")
-                source_result["status"] = "ingested"
-                mgr.conn.commit()
+                if source_result["conversation_errors"]:
+                    source_errors += 1
+                    source_result["status"] = "failed"
+                    source_result["error"] = "failed_to_process_conversation"
+                else:
+                    source_result["status"] = "ingested"
             except Exception:
                 source_errors += 1
                 source_result["status"] = "failed"
                 source_result["error"] = "failed_to_read_source"
                 logger.exception(f"Failed to read source {label}")
-                mgr.conn.rollback()
             trace["source_results"].append(source_result)
 
-        mgr.finalize_run()
+        failed = source_errors > 0 or conversation_errors > 0
+        if failed:
+            mgr.conn.rollback()
+        else:
+            mgr.finalize_run()
+            mgr.conn.commit()
         elapsed = time.time() - start_time
-        stats = dict(mgr.stats)
+        stats = {} if failed else dict(mgr.stats)
         trace["stats"] = stats
         trace["elapsed_sec"] = elapsed
         trace["source_errors"] = source_errors
+        trace["conversation_errors"] = conversation_errors
+        trace["partial"] = failed and any(row.get("conversations_seen", 0) > 0 for row in trace["source_results"])
         trace["finished_at"] = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         if trace_path:
             _write_trace(trace_path, trace)
-        logger.info(
-            f"Canonical ingest complete: {stats.get('conversations', 0)} conversations, "
-            f"{stats.get('messages', 0)} messages, {stats.get('links', 0)} links in {elapsed:.1f}s"
-        )
+        if failed:
+            logger.error(
+                "Canonical ingest rolled back: %s source errors and %s conversation errors.",
+                source_errors,
+                conversation_errors,
+            )
+        else:
+            logger.info(
+                f"Canonical ingest complete: {stats.get('conversations', 0)} conversations, "
+                f"{stats.get('messages', 0)} messages, {stats.get('links', 0)} links in {elapsed:.1f}s"
+            )
         return {
             "run_id": run_id,
             "stats": stats,
             "elapsed_sec": elapsed,
             "skipped": False,
-            "failed": source_errors == len(sources),
+            "failed": failed,
+            "partial": trace["partial"],
             "source_errors": source_errors,
+            "conversation_errors": conversation_errors,
+            "source_results": trace["source_results"],
             "diagnostics": diagnostics,
             "trace_path": trace_path,
         }
