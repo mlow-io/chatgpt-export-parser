@@ -256,6 +256,7 @@ CANONICAL_TABLES_SQL = [
 
     "CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);",
     "CREATE INDEX IF NOT EXISTS idx_conversations_latest_message ON conversations(latest_message_at);",
+    "CREATE INDEX IF NOT EXISTS idx_conversation_runs_conversation ON conversation_runs(conversation_id);",
     "CREATE INDEX IF NOT EXISTS idx_conversation_runs_imported ON conversation_runs(imported_at);",
     "CREATE INDEX IF NOT EXISTS idx_nodes_parent ON nodes(conversation_id, parent_id);",
     "CREATE INDEX IF NOT EXISTS idx_messages_time ON messages(conversation_id, time_index);",

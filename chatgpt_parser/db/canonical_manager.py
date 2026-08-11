@@ -39,6 +39,17 @@ def _stable_id(*parts: object) -> str:
     return hashlib.sha1(payload.encode("utf-8")).hexdigest()
 
 
+def _source_fingerprint(value: Dict[str, Any]) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
 def _dict(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -226,6 +237,7 @@ class CanonicalManager:
         if self.mode == "skip_existing" and self.check_run_exists(run_id):
             self.logger.info("Run %s already exists in canonical archive. Skipping.", run_id)
             return False
+        self.stats.clear()
         self._active_run_id = run_id
         self.conn.execute(
             """
@@ -276,6 +288,7 @@ class CanonicalManager:
         mapping = conv.get("mapping") or {}
         if not isinstance(mapping, dict):
             mapping = {}
+        source_fingerprint = _source_fingerprint(conv)
 
         parents, children, depth = _graph(mapping)
         main_path = _main_path_index(mapping, parents, conv.get("current_node"))
@@ -296,7 +309,24 @@ class CanonicalManager:
             all_messages=all_messages,
             main_path_ids=main_path_ids,
             models_used=models_used,
+            source_fingerprint=source_fingerprint,
         )
+
+        if self._matches_existing_source_fingerprint(conv_id, source_fingerprint):
+            self._upsert_conversation_run(active_run_id, conversation_row, canonical_snapshot=False)
+            self._record_message_runs(
+                conv_id=conv_id,
+                active_run_id=active_run_id,
+                message_ids=[row["id"] for row in all_messages],
+            )
+            self._ingest_links(conv, conv_id, active_run_id, all_messages, persist=False)
+            self._ingest_attachments(conv_id, active_run_id, mapping, persist=False)
+            self._ingest_tool_rows(conv_id, active_run_id, mapping, persist=False)
+            self.stats["conversations"] += 1
+            self.stats["messages"] += len(all_messages)
+            if self.auto_commit:
+                self.conn.commit()
+            return
 
         canonical_snapshot = self._should_replace_conversation_snapshot(conv_id, conversation_row)
         if canonical_snapshot or not self._conversation_exists(conv_id):
@@ -413,6 +443,7 @@ class CanonicalManager:
         all_messages: List[Dict[str, Any]],
         main_path_ids: set[str],
         models_used: set[str],
+        source_fingerprint: str,
     ) -> Dict[str, Any]:
         ordered_messages = [row for row in all_messages if row["node_id"] in main_path_ids] or list(all_messages)
         role_counts: Counter[str] = Counter()
@@ -455,6 +486,7 @@ class CanonicalManager:
                 {
                     "conversation_origin": conv.get("conversation_origin"),
                     "is_do_not_remember": conv.get("is_do_not_remember"),
+                    "source_fingerprint": source_fingerprint,
                 }
             ),
             "source_file": source_file,
@@ -551,13 +583,47 @@ class CanonicalManager:
                     role=message_row["role"],
                     text=message_row["text"] or "",
                 )
-            self.conn.execute(
-                """
-                INSERT OR REPLACE INTO message_runs (run_id, conversation_id, message_id, imported_at)
-                VALUES (?, ?, ?, ?)
-                """,
-                (active_run_id, conv_id, message_row["id"], _iso_now()),
-            )
+        self._record_message_runs(
+            conv_id=conv_id,
+            active_run_id=active_run_id,
+            message_ids=[row["id"] for row in all_messages],
+        )
+
+    def _record_message_runs(
+        self,
+        *,
+        conv_id: str,
+        active_run_id: str,
+        message_ids: List[str],
+    ) -> None:
+        imported_at = _iso_now()
+        self.conn.executemany(
+            """
+            INSERT OR REPLACE INTO message_runs (run_id, conversation_id, message_id, imported_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            [
+                (active_run_id, conv_id, message_id, imported_at)
+                for message_id in message_ids
+            ],
+        )
+
+    def _matches_existing_source_fingerprint(
+        self,
+        conversation_id: str,
+        source_fingerprint: str,
+    ) -> bool:
+        row = self.conn.execute(
+            "SELECT metadata FROM conversations WHERE id = ?",
+            (conversation_id,),
+        ).fetchone()
+        if row is None or not row[0]:
+            return False
+        try:
+            metadata = json.loads(row[0])
+        except (TypeError, ValueError):
+            return False
+        return _dict(metadata).get("source_fingerprint") == source_fingerprint
 
     def _existing_run_id(self, table: str, conversation_id: str, entity_id: str) -> Optional[str]:
         row = self.conn.execute(
@@ -727,7 +793,15 @@ class CanonicalManager:
                 (message_id, conversation_id, run_id, role, text),
             )
 
-    def _ingest_links(self, conv: Dict[str, Any], conversation_id: str, run_id: str, messages: List[Dict[str, Any]]) -> None:
+    def _ingest_links(
+        self,
+        conv: Dict[str, Any],
+        conversation_id: str,
+        run_id: str,
+        messages: List[Dict[str, Any]],
+        *,
+        persist: bool = True,
+    ) -> None:
         safe_urls = _list(conv.get("safe_urls"))
         for index, url in enumerate(safe_urls):
             scheme, domain, path, query = parse_url(url)
@@ -748,15 +822,16 @@ class CanonicalManager:
                 "kind": None,
                 "metadata": _json({}),
             }
-            self._upsert_row(
-                "links",
-                [
-                    "conversation_id", "id", "run_id", "message_id", "source", "url",
-                    "display_text", "position_start", "position_end", "scheme", "domain",
-                    "path", "query", "kind", "metadata",
-                ],
-                row,
-            )
+            if persist:
+                self._upsert_row(
+                    "links",
+                    [
+                        "conversation_id", "id", "run_id", "message_id", "source", "url",
+                        "display_text", "position_start", "position_end", "scheme", "domain",
+                        "path", "query", "kind", "metadata",
+                    ],
+                    row,
+                )
             self.stats["links"] += 1
 
         for message in messages:
@@ -779,15 +854,16 @@ class CanonicalManager:
                     "kind": None,
                     "metadata": _json({}),
                 }
-                self._upsert_row(
-                    "links",
-                    [
-                        "conversation_id", "id", "run_id", "message_id", "source", "url",
-                        "display_text", "position_start", "position_end", "scheme", "domain",
-                        "path", "query", "kind", "metadata",
-                    ],
-                    row,
-                )
+                if persist:
+                    self._upsert_row(
+                        "links",
+                        [
+                            "conversation_id", "id", "run_id", "message_id", "source", "url",
+                            "display_text", "position_start", "position_end", "scheme", "domain",
+                            "path", "query", "kind", "metadata",
+                        ],
+                        row,
+                    )
                 self.stats["links"] += 1
 
             metadata = _dict(json.loads(message.get("metadata") or "{}"))
@@ -823,18 +899,26 @@ class CanonicalManager:
                     "kind": reference.get("type") or nested.get("type") or "citation",
                     "metadata": _json(reference),
                 }
-                self._upsert_row(
-                    "links",
-                    [
-                        "conversation_id", "id", "run_id", "message_id", "source", "url",
-                        "display_text", "position_start", "position_end", "scheme", "domain",
-                        "path", "query", "kind", "metadata",
-                    ],
-                    row,
-                )
+                if persist:
+                    self._upsert_row(
+                        "links",
+                        [
+                            "conversation_id", "id", "run_id", "message_id", "source", "url",
+                            "display_text", "position_start", "position_end", "scheme", "domain",
+                            "path", "query", "kind", "metadata",
+                        ],
+                        row,
+                    )
                 self.stats["links"] += 1
 
-    def _ingest_attachments(self, conversation_id: str, run_id: str, mapping: Dict[str, Dict[str, Any]]) -> None:
+    def _ingest_attachments(
+        self,
+        conversation_id: str,
+        run_id: str,
+        mapping: Dict[str, Dict[str, Any]],
+        *,
+        persist: bool = True,
+    ) -> None:
         for node_key, node in mapping.items():
             if not isinstance(node, dict):
                 continue
@@ -871,14 +955,22 @@ class CanonicalManager:
                         }
                     ),
                 }
-                self._upsert_row(
-                    "attachments",
-                    ["conversation_id", "id", "run_id", "message_id", "type", "filename", "mime_type", "filesize_bytes", "source_ref", "metadata"],
-                    row,
-                )
+                if persist:
+                    self._upsert_row(
+                        "attachments",
+                        ["conversation_id", "id", "run_id", "message_id", "type", "filename", "mime_type", "filesize_bytes", "source_ref", "metadata"],
+                        row,
+                    )
                 self.stats["attachments"] += 1
 
-    def _ingest_tool_rows(self, conversation_id: str, run_id: str, mapping: Dict[str, Dict[str, Any]]) -> None:
+    def _ingest_tool_rows(
+        self,
+        conversation_id: str,
+        run_id: str,
+        mapping: Dict[str, Dict[str, Any]],
+        *,
+        persist: bool = True,
+    ) -> None:
         call_id_by_node: Dict[str, str] = {}
         for node_key, node in mapping.items():
             if not isinstance(node, dict):
@@ -913,11 +1005,12 @@ class CanonicalManager:
                     "raw_arguments": raw_args,
                     "metadata": _json(_dict(message.get("metadata"))),
                 }
-                self._upsert_row(
-                    "tool_calls",
-                    ["conversation_id", "id", "run_id", "message_id", "tool_name", "call_index", "arguments_json", "raw_arguments", "metadata"],
-                    row,
-                )
+                if persist:
+                    self._upsert_row(
+                        "tool_calls",
+                        ["conversation_id", "id", "run_id", "message_id", "tool_name", "call_index", "arguments_json", "raw_arguments", "metadata"],
+                        row,
+                    )
                 self.stats["tool_calls"] += 1
 
         for node_key, node in mapping.items():
@@ -965,9 +1058,10 @@ class CanonicalManager:
                     "raw_result": raw_result,
                     "metadata": _json(_dict(message.get("metadata"))),
                 }
-                self._upsert_row(
-                    "tool_results",
-                    ["conversation_id", "id", "run_id", "message_id", "tool_call_id", "result_json", "raw_result", "metadata"],
-                    row,
-                )
+                if persist:
+                    self._upsert_row(
+                        "tool_results",
+                        ["conversation_id", "id", "run_id", "message_id", "tool_call_id", "result_json", "raw_result", "metadata"],
+                        row,
+                    )
                 self.stats["tool_results"] += 1
