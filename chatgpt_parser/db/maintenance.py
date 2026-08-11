@@ -157,11 +157,30 @@ def run_check(args, logger: logging.Logger):
     for row in cur.fetchall():
         errors.append({"type": "conversation_main_path_count_mismatch", **dict(row)})
 
+    # FTS5 UNINDEXED columns cannot efficiently serve relational joins. Materialize
+    # just the identity columns into an indexed temporary table so archive checks
+    # remain linear at real-export scale.
+    cur.execute(
+        """
+        CREATE TEMP TABLE check_message_fts_keys (
+            conversation_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            PRIMARY KEY (conversation_id, message_id)
+        ) WITHOUT ROWID
+        """
+    )
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO check_message_fts_keys (conversation_id, message_id)
+        SELECT conversation_id, message_id FROM message_fts
+        """
+    )
+
     cur.execute(
         """
         SELECT m.conversation_id, m.id AS message_id
         FROM messages m
-        LEFT JOIN message_fts f
+        LEFT JOIN check_message_fts_keys f
           ON m.conversation_id = f.conversation_id
          AND m.id = f.message_id
         WHERE COALESCE(m.text, '') != ''
@@ -174,7 +193,7 @@ def run_check(args, logger: logging.Logger):
     cur.execute(
         """
         SELECT f.conversation_id, f.message_id
-        FROM message_fts f
+        FROM check_message_fts_keys f
         LEFT JOIN messages m
           ON f.conversation_id = m.conversation_id
          AND f.message_id = m.id
