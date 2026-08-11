@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - codex/unified-atlasbench-contract
 
 permissions:
   contents: read
