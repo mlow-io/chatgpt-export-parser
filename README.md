@@ -240,6 +240,11 @@ This gives you historical visibility without making the main archive run-scoped.
 Identical reimports add snapshot and message provenance without rewriting the
 canonical conversation, FTS index, or rich-resource rows.
 
+When a newer snapshot changes, its canonical graph and rich resources replace
+the older content exactly. Removed message IDs are retained as tombstones in
+the replacing `conversation_runs.metadata`; asynchronous and read-only source
+status is also preserved in conversation metadata.
+
 ## Why This Replaced The Older Approach
 
 The repo used to carry:

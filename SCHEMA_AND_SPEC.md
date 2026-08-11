@@ -21,6 +21,8 @@ Key rules:
 - one logical row per canonical message
 - run provenance stored separately in dedicated tables
 - later exports can supersede older truncated snapshots
+- canonical replacements prune graph and resource rows absent from the newer
+  snapshot instead of leaving stale content behind
 - identical source snapshots add run provenance without rewriting canonical
   messages, FTS entries, or rich-resource rows
 - different `--db` targets produce different canonical archives
@@ -83,6 +85,9 @@ conversation object. It is used only to recognize identical reimports; archives
 created before this field existed are rewritten once and then gain the fast
 path on later identical runs.
 
+Conversation metadata also preserves `async_status` and `is_read_only` when
+present in the source export.
+
 ### conversation_runs
 
 Per-run conversation snapshots and provenance.
@@ -92,6 +97,12 @@ Per-run conversation snapshots and provenance.
 - snapshot metadata such as message counts and timestamps
 - `imported_at`
 - `is_canonical_snapshot`
+
+When a canonical replacement removes messages,
+`metadata.removed_message_ids` records their IDs on the replacing snapshot.
+Because `message_runs` references the current canonical message table, rows for
+removed messages are deleted with those messages; the tombstone is the durable
+deletion evidence rather than a retained orphan message row.
 
 ### nodes
 
