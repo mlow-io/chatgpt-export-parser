@@ -8,10 +8,14 @@ The parser is now oriented around one standard output:
 
 ## Near-Term Follow-Up
 
-1. Keep canonical ingest stable against larger overlapping export sets and additional real-world export oddities.
-2. Expand regression coverage for more malformed or sparse export shapes, especially around partial metadata and unusual node graphs.
-3. Consider whether `check` should grow optional repair-oriented guidance or remain strictly diagnostic.
-4. Continue trimming stale historical docs that no longer help the canonical-only product story.
+1. Validate identical-reimport performance and provenance on the full real
+   AtlasBench fixture gate.
+2. Validate an older/newer export pair for edited, deleted, partial, preview,
+   branch, and rich-resource update behavior.
+3. Expand regression coverage for malformed or sparse export shapes, especially
+   unusual node graphs.
+4. Decide whether `check` should remain strictly diagnostic or add optional
+   repair guidance.
 
 ## Completed
 

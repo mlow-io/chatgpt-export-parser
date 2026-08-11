@@ -21,6 +21,8 @@ Key rules:
 - one logical row per canonical message
 - run provenance stored separately in dedicated tables
 - later exports can supersede older truncated snapshots
+- identical source snapshots add run provenance without rewriting canonical
+  messages, FTS entries, or rich-resource rows
 - different `--db` targets produce different canonical archives
 
 ## Common Conventions
@@ -75,6 +77,11 @@ Canonical conversation rows.
 - `keyword_text`
 - `metadata`
 - `source_file`
+
+`metadata.source_fingerprint` is an internal SHA-256 fingerprint of the raw
+conversation object. It is used only to recognize identical reimports; archives
+created before this field existed are rewritten once and then gain the fast
+path on later identical runs.
 
 ### conversation_runs
 

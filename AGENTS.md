@@ -1,8 +1,9 @@
-# Repository Guidelines
+# AGENTS.md
 
 ## Product Scope
 
-This repo is a ChatGPT export parser whose primary output is a canonical SQLite archive.
+This repository has one job: convert raw ChatGPT exports into a canonical,
+cumulative SQLite archive for AtlasBench and compatible local tools.
 
 The standard workflow is:
 
@@ -12,9 +13,32 @@ python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./my
 
 `canonical-ingest` is an explicit alias for the same canonical archive workflow.
 
-## Project Structure
+Keep the boundary narrow:
 
-- CLI entrypoint: `ChatGPT_Export_parser.py`
+- The parser owns raw-export interpretation, identity, deduplication, graph
+  reconstruction, schema maintenance, and canonical SQLite creation.
+- Downstream applications own import orchestration, browsing, presentation,
+  app-local notes, and user-requested exports.
+- Do not add generic corpus ingestion, cloud services, dashboards, or a second
+  primary storage model.
+
+## Current State
+
+Stable records live in:
+
+- `README.md` — product, installation, workflow, and safety
+- `CLI_SPEC.md` — versioned command behavior
+- `SCHEMA_AND_SPEC.md` — canonical schema and provenance rules
+- `TODOS.md` — short ordered follow-up list
+
+Do not create parallel `current/`, prompt, implementation, or generated
+documentation stacks. Update the stable records above when behavior changes.
+
+## Code Map
+
+- Package/native API: `chatgpt_parser/api.py`
+- CLI entrypoints: `python3 -m chatgpt_parser`, `chatgpt-parser`, and the legacy
+  compatibility shim `ChatGPT_Export_parser.py`
 - CLI implementation: `chatgpt_parser/cli/`
 - Canonical DB logic: `chatgpt_parser/db/canonical_manager.py`, `chatgpt_parser/db/canonical_schema.py`
 - Query/export helpers: `chatgpt_parser/core/exporter.py`
@@ -26,16 +50,16 @@ python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./my
 - keep the canonical archive as the primary data model
 - preserve run provenance, but not as run-scoped primary identity
 - preserve branch/node structure inside conversations
+- treat source-equivalent conversations as unchanged canonical content:
+  record new run provenance without rewriting messages, FTS, or resources
 - avoid reintroducing separate first-class run-scoped or catalog product stories
 - keep different `--db` paths fully supported as different canonical archives
 
 ## Build, Test, and Development Commands
 
-- Canonical ingest: `python3 ChatGPT_Export_parser.py parse-and-ingest export.json --db ./chatgpt_export.db`
-- Query: `python3 ChatGPT_Export_parser.py query --db ./chatgpt_export.db --type conversations --limit 5`
-- Search: `python3 ChatGPT_Export_parser.py search --db ./chatgpt_export.db --q "pizza"`
-- Export: `python3 ChatGPT_Export_parser.py export-conversation --db ./chatgpt_export.db --conversation-id <uuid> --output convo.md`
-- Validate: `python3 ChatGPT_Export_parser.py check --db ./chatgpt_export.db --format json`
+- Contract: `python3 -m chatgpt_parser --json contract`
+- Canonical ingest: `python3 -m chatgpt_parser canonical-ingest export.json --db ./chatgpt_export.db`
+- Validate: `python3 -m chatgpt_parser check --db ./chatgpt_export.db --format json`
 - Tests: `python3 -m unittest discover -s tests`
 - Repository privacy: `scripts/check_repository_privacy.sh`
 - Candidate-ref privacy: `scripts/audit_ref_privacy.sh <ref>`
@@ -58,4 +82,7 @@ python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./my
 - exports and databases are local-only
 - generated DBs and local artifacts should remain gitignored
 - only the checked-in synthetic `demo/` fixture is approved as tracked archive-shaped data
-- never push all refs or publish the local `legacy-main` history without a separate history audit
+- the candidate-ref audit covers reachable tracked paths and text; it does not
+  certify commit-author metadata
+- the private legacy object graph is quarantined outside this clean checkout;
+  never use the quarantine as a push source or publish its refs
