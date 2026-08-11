@@ -26,7 +26,13 @@ class IngestError(RuntimeError):
     def __init__(self, result: "IngestResult") -> None:
         self.result = result
         diagnostics = result.diagnostics or []
+        failed_source = next(
+            (row for row in result.source_results if row.get("status") == "failed"),
+            None,
+        )
         reason = diagnostics[0].get("reason") if diagnostics else None
+        if not reason and failed_source:
+            reason = f"Failed to ingest {failed_source.get('label') or 'a selected source'}."
         super().__init__(reason or "ChatGPT export ingestion failed.")
 
 
@@ -59,7 +65,10 @@ class IngestResult:
     elapsed_seconds: float = 0.0
     skipped: bool = False
     failed: bool = False
+    partial: bool = False
     source_errors: int = 0
+    conversation_errors: int = 0
+    source_results: list[dict[str, Any]] = field(default_factory=list)
     diagnostics: list[dict[str, Any]] = field(default_factory=list)
     trace_path: str | None = None
 
@@ -77,6 +86,11 @@ def parser_contract() -> dict[str, Any]:
         "python_requires": ">=3.10",
         "input_kinds": ["json_file", "export_folder", "zip_file"],
         "diagnostic_input_kinds": ["chat_html"],
+        "ingest_semantics": {
+            "atomic": True,
+            "rejects_partial_runs": True,
+            "structured_source_results": True,
+        },
         "operations": [
             "inspect_inputs",
             "ingest_exports",
@@ -148,7 +162,10 @@ def ingest_exports(
         elapsed_seconds=float(raw.get("elapsed_sec") or 0.0),
         skipped=bool(raw.get("skipped", False)),
         failed=bool(raw.get("failed", False)),
+        partial=bool(raw.get("partial", False)),
         source_errors=int(raw.get("source_errors") or 0),
+        conversation_errors=int(raw.get("conversation_errors") or 0),
+        source_results=list(raw.get("source_results") or []),
         diagnostics=list(raw.get("diagnostics") or []),
         trace_path=raw.get("trace_path"),
     )

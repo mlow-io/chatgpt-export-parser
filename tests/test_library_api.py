@@ -50,6 +50,8 @@ class LibraryAPITests(unittest.TestCase):
         self.assertGreaterEqual(contract["canonical_schema_version"], 2)
         self.assertIn("ingest_exports", contract["operations"])
         self.assertIn("export_folder", contract["input_kinds"])
+        self.assertTrue(contract["ingest_semantics"]["atomic"])
+        self.assertTrue(contract["ingest_semantics"]["rejects_partial_runs"])
 
     def test_direct_library_ingest_supports_split_export_folder(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -94,6 +96,53 @@ class LibraryAPITests(unittest.TestCase):
                 ingest_exports([html_path], os.path.join(tmpdir, "archive.sqlite3"))
             self.assertTrue(raised.exception.result.failed)
             self.assertEqual(raised.exception.result.diagnostics[0]["kind"], "chat_html")
+
+    def test_mixed_valid_and_corrupt_inputs_roll_back_the_complete_run(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            seed_path = os.path.join(tmpdir, "seed.json")
+            valid_path = os.path.join(tmpdir, "valid.json")
+            corrupt_path = os.path.join(tmpdir, "corrupt.json")
+            database = os.path.join(tmpdir, "archive.sqlite3")
+            with open(seed_path, "w", encoding="utf-8") as handle:
+                json.dump([_conversation("seed")], handle)
+            with open(valid_path, "w", encoding="utf-8") as handle:
+                json.dump([_conversation("valid")], handle)
+            with open(corrupt_path, "w", encoding="utf-8") as handle:
+                handle.write("{not valid json")
+
+            ingest_exports([seed_path], database, run_id="seed_run")
+            with self.assertRaises(IngestError) as raised:
+                ingest_exports([valid_path, corrupt_path], database, run_id="failed_run")
+
+            result = raised.exception.result
+            self.assertTrue(result.failed)
+            self.assertTrue(result.partial)
+            self.assertEqual(result.source_errors, 1)
+            self.assertEqual({row["status"] for row in result.source_results}, {"ingested", "failed"})
+            with closing(sqlite3.connect(database)) as connection:
+                conversations = connection.execute("SELECT id FROM conversations ORDER BY id").fetchall()
+                runs = connection.execute("SELECT run_id FROM runs ORDER BY run_id").fetchall()
+            self.assertEqual(conversations, [("seed",)])
+            self.assertEqual(runs, [("seed_run",)])
+
+    def test_future_schema_is_rejected_without_rewriting_version(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            database = os.path.join(tmpdir, "future.sqlite3")
+            with closing(sqlite3.connect(database)) as connection:
+                connection.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+                connection.execute("INSERT INTO meta(key, value) VALUES ('schema_version', '99')")
+                connection.commit()
+            source = os.path.join(tmpdir, "source.json")
+            with open(source, "w", encoding="utf-8") as handle:
+                json.dump([_conversation("future")], handle)
+
+            with self.assertRaises(RuntimeError):
+                ingest_exports([source], database, run_id="future_run")
+            with closing(sqlite3.connect(database)) as connection:
+                version = connection.execute(
+                    "SELECT value FROM meta WHERE key = 'schema_version'"
+                ).fetchone()[0]
+            self.assertEqual(version, "99")
 
     def test_package_module_exposes_contract_for_native_clients(self):
         completed = subprocess.run(

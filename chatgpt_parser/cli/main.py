@@ -141,7 +141,10 @@ def main():
             "stats": result.stats,
             "elapsed_sec": result.elapsed_seconds,
             "skipped": result.skipped,
+            "partial": result.partial,
             "source_errors": result.source_errors,
+            "conversation_errors": result.conversation_errors,
+            "source_results": result.source_results,
             "diagnostics": result.diagnostics,
             "trace_path": result.trace_path,
         }

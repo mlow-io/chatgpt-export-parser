@@ -178,13 +178,32 @@ class CanonicalManager:
         self.conn = sqlite3.connect(db_path)
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.conn.text_factory = str
-        self._init_schema()
+        self.auto_commit = True
+        try:
+            self._init_schema()
+        except Exception:
+            self.conn.close()
+            raise
         self.logger = logging.getLogger(__name__)
         self.stats = defaultdict(int)
         self._active_run_id: Optional[str] = None
-        self.auto_commit = True
 
     def _init_schema(self) -> None:
+        has_meta = self.conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta'"
+        ).fetchone()
+        if has_meta:
+            row = self.conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+            if row:
+                try:
+                    existing_version = int(row[0])
+                except (TypeError, ValueError) as error:
+                    raise RuntimeError("Canonical archive has an invalid schema_version.") from error
+                if existing_version != CANONICAL_SCHEMA_VERSION:
+                    raise RuntimeError(
+                        f"Unsupported canonical schema version {existing_version}; "
+                        f"this parser supports version {CANONICAL_SCHEMA_VERSION}."
+                    )
         cur = self.conn.cursor()
         for stmt in CANONICAL_TABLES_SQL:
             cur.execute(stmt)
@@ -196,7 +215,8 @@ class CanonicalManager:
             "INSERT OR IGNORE INTO meta(key, value) VALUES ('created_at', ?)",
             (_iso_now(),),
         )
-        self.conn.commit()
+        if self.auto_commit:
+            self.conn.commit()
 
     def check_run_exists(self, run_id: str) -> bool:
         row = self.conn.execute("SELECT 1 FROM runs WHERE run_id = ?", (run_id,)).fetchone()
@@ -214,7 +234,8 @@ class CanonicalManager:
             """,
             (run_id, _iso_now(), _json(input_files), _json({})),
         )
-        self.conn.commit()
+        if self.auto_commit:
+            self.conn.commit()
         return True
 
     def finalize_run(self) -> None:
@@ -236,7 +257,8 @@ class CanonicalManager:
             """,
             (_iso_now(), _json(stats), self._active_run_id),
         )
-        self.conn.commit()
+        if self.auto_commit:
+            self.conn.commit()
 
     def close(self) -> None:
         self.conn.close()
