@@ -539,6 +539,36 @@ class CanonicalArchiveIngestTests(unittest.TestCase):
         finally:
             os.unlink(db_path)
 
+    def test_partial_conversation_without_mapping_is_preserved(self):
+        conversation = {
+            "id": "conv_partial",
+            "title": "Partial conversation",
+            "create_time": 1000.0,
+            "update_time": 1001.0,
+            "current_node": None,
+            "mapping": {},
+            "async_status": 3,
+        }
+        db_path = self._ingest_runs([("run_partial", [conversation])])
+        try:
+            with self._open(db_path) as conn:
+                row = conn.execute(
+                    """
+                    SELECT message_count, message_count_main_path, current_node_id, metadata
+                    FROM conversations WHERE id = 'conv_partial'
+                    """
+                ).fetchone()
+                self.assertEqual(tuple(row[:3]), (0, 0, None))
+                self.assertEqual(json.loads(row[3])["async_status"], 3)
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM nodes WHERE conversation_id = 'conv_partial'"
+                    ).fetchone()[0],
+                    0,
+                )
+        finally:
+            os.unlink(db_path)
+
     def test_branch_structure_is_preserved_without_cross_run_dedupe_of_branch_nodes(self):
         db_path = self._ingest_runs([("run_branch", [_make_branch()])])
         try:
