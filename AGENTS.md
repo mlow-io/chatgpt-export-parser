@@ -37,6 +37,7 @@ python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./my
 - Export: `python3 ChatGPT_Export_parser.py export-conversation --db ./chatgpt_export.db --conversation-id <uuid> --output convo.md`
 - Validate: `python3 ChatGPT_Export_parser.py check --db ./chatgpt_export.db --format json`
 - Tests: `python3 -m unittest discover -s tests`
+- Repository privacy: `scripts/check_repository_privacy.sh`
 
 ## Coding Style
 
@@ -55,3 +56,5 @@ python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./my
 
 - exports and databases are local-only
 - generated DBs and local artifacts should remain gitignored
+- only the checked-in synthetic `demo/` fixture is approved as tracked archive-shaped data
+- never push all refs or publish the local `legacy-main` history without a separate history audit
