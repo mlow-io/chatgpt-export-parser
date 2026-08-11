@@ -27,7 +27,9 @@ while IFS= read -r -d '' path; do
     fi
 done < <(git ls-files -z)
 
-if git grep -I -n -E '(/Users/|/home/|/private/var/folders|/var/folders)' -- . ':!scripts/check_repository_privacy.sh'; then
+if git grep -I -n -E '(/Users/|/home/|/private/var/folders|/var/folders)' -- . \
+    ':!scripts/check_repository_privacy.sh' \
+    ':!scripts/audit_ref_privacy.sh'; then
     echo "Tracked text contains an absolute local-user path." >&2
     failed=1
 fi
