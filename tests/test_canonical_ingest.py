@@ -413,6 +413,41 @@ class CanonicalArchiveIngestTests(unittest.TestCase):
         finally:
             os.unlink(db_path)
 
+    def test_same_timestamp_and_count_with_changed_content_replaces_snapshot(self):
+        original = _make_single_turn("conv_edit", ts=1000.0)
+        edited = _make_single_turn("conv_edit", ts=1000.0)
+        edited["mapping"]["node_conv_edit"]["message"]["content"]["parts"] = [
+            "Edited content"
+        ]
+        db_path = self._ingest_runs([
+            ("run_original", [original]),
+            ("run_edited", [edited]),
+        ])
+        try:
+            with self._open(db_path) as conn:
+                conversation = conn.execute(
+                    "SELECT run_id FROM conversations WHERE id = 'conv_edit'"
+                ).fetchone()
+                self.assertEqual(conversation[0], "run_edited")
+                message = conn.execute(
+                    "SELECT run_id, text FROM messages WHERE conversation_id = 'conv_edit'"
+                ).fetchone()
+                self.assertEqual(tuple(message), ("run_edited", "Edited content"))
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM message_fts WHERE message_fts MATCH 'edited'"
+                    ).fetchone()[0],
+                    1,
+                )
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM message_fts WHERE message_fts MATCH 'hello'"
+                    ).fetchone()[0],
+                    0,
+                )
+        finally:
+            os.unlink(db_path)
+
     def test_branch_structure_is_preserved_without_cross_run_dedupe_of_branch_nodes(self):
         db_path = self._ingest_runs([("run_branch", [_make_branch()])])
         try:
@@ -576,6 +611,88 @@ class CanonicalArchiveIngestTests(unittest.TestCase):
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM attachments WHERE conversation_id = 'rich_conv'").fetchone()[0], 2)
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM tool_calls WHERE conversation_id = 'rich_conv'").fetchone()[0], 1)
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM tool_results WHERE conversation_id = 'rich_conv'").fetchone()[0], 1)
+        finally:
+            os.unlink(db_path)
+
+    def test_identical_reimport_records_provenance_without_rewriting_canonical_content(self):
+        handle = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db_path = handle.name
+        handle.close()
+        try:
+            conversation = _make_rich_content()
+            mgr = CanonicalManager(db_path)
+            self.assertTrue(mgr.begin_run("run_rich_a", ["run_rich_a.json"]))
+            mgr.ingest_conversation(conversation, "run_rich_a.json", run_id="run_rich_a")
+            mgr.finalize_run()
+
+            statements = []
+            mgr.conn.set_trace_callback(statements.append)
+            self.assertTrue(mgr.begin_run("run_rich_b", ["run_rich_b.json"]))
+            mgr.ingest_conversation(conversation, "run_rich_b.json", run_id="run_rich_b")
+            mgr.finalize_run()
+            mgr.conn.set_trace_callback(None)
+            mgr.close()
+
+            content_write_prefixes = (
+                "INSERT INTO CONVERSATIONS ",
+                "UPDATE CONVERSATIONS ",
+                "INSERT INTO NODES ",
+                "INSERT INTO NODE_CHILDREN ",
+                "INSERT INTO MESSAGES ",
+                "DELETE FROM MESSAGE_FTS ",
+                "INSERT INTO MESSAGE_FTS ",
+                "INSERT INTO LINKS ",
+                "INSERT INTO ATTACHMENTS ",
+                "INSERT INTO TOOL_CALLS ",
+                "INSERT INTO TOOL_RESULTS ",
+            )
+            content_writes = [
+                statement
+                for statement in statements
+                if " ".join(statement.upper().split()).startswith(content_write_prefixes)
+            ]
+            self.assertEqual(content_writes, [])
+
+            with self._open(db_path) as conn:
+                canonical = conn.execute(
+                    "SELECT run_id FROM conversations WHERE id = 'rich_conv'"
+                ).fetchone()[0]
+                self.assertEqual(canonical, "run_rich_a")
+
+                snapshots = conn.execute(
+                    """
+                    SELECT run_id, is_canonical_snapshot
+                    FROM conversation_runs
+                    WHERE conversation_id = 'rich_conv'
+                    ORDER BY run_id
+                    """
+                ).fetchall()
+                self.assertEqual(
+                    [tuple(row) for row in snapshots],
+                    [("run_rich_a", 1), ("run_rich_b", 0)],
+                )
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM message_runs WHERE conversation_id = 'rich_conv'"
+                    ).fetchone()[0],
+                    8,
+                )
+                for table in ("links", "attachments", "tool_calls", "tool_results"):
+                    run_ids = {
+                        row[0]
+                        for row in conn.execute(
+                            f"SELECT DISTINCT run_id FROM {table} WHERE conversation_id = 'rich_conv'"
+                        )
+                    }
+                    self.assertEqual(run_ids, {"run_rich_a"})
+
+                first_stats = json.loads(
+                    conn.execute("SELECT stats FROM runs WHERE run_id = 'run_rich_a'").fetchone()[0]
+                )
+                second_stats = json.loads(
+                    conn.execute("SELECT stats FROM runs WHERE run_id = 'run_rich_b'").fetchone()[0]
+                )
+                self.assertEqual(second_stats, first_stats)
         finally:
             os.unlink(db_path)
 
