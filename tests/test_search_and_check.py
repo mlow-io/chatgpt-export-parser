@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import closing, redirect_stdout
 from io import StringIO
@@ -198,6 +199,76 @@ class SearchAndCheckTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("conversation_message_count_mismatch", error_types)
         self.assertIn("missing_message_fts_row", error_types)
+
+    def test_check_detects_orphan_fts_row(self):
+        db_path = self._canonical_ingest([_make_conv("conv_fts_orphan", "indexed")])
+        logger = setup_logging(None, verbose=False)
+        import sqlite3
+        with closing(sqlite3.connect(db_path)) as conn:
+            conn.execute(
+                """
+                INSERT INTO message_fts (message_id, conversation_id, run_id, role, text)
+                VALUES ('missing_message', 'missing_conversation', 'test_run', 'user', 'orphan')
+                """
+            )
+            conn.commit()
+
+        buf = StringIO()
+        with redirect_stdout(buf):
+            run_check(SimpleNamespace(db=db_path, format="json"), logger)
+
+        result = json.loads(buf.getvalue())
+        error_types = {error["type"] for error in result["errors"]}
+        self.assertFalse(result["ok"])
+        self.assertIn("orphan_message_fts_row", error_types)
+
+    def test_check_keeps_fts_identity_validation_bounded(self):
+        db_path = self._canonical_ingest([_make_conv("conv_check_scale", "indexed")])
+        logger = setup_logging(None, verbose=False)
+        import sqlite3
+        row_count = 8_000
+        with closing(sqlite3.connect(db_path)) as conn:
+            node_rows = [
+                ("conv_check_scale", f"scale_node_{index}", "test_run", f"scale_message_{index}")
+                for index in range(row_count)
+            ]
+            message_rows = [
+                ("conv_check_scale", f"scale_message_{index}", "test_run", f"scale_node_{index}", "user", "indexed")
+                for index in range(row_count)
+            ]
+            conn.executemany(
+                "INSERT INTO nodes (conversation_id, id, run_id, message_id) VALUES (?, ?, ?, ?)",
+                node_rows,
+            )
+            conn.executemany(
+                """
+                INSERT INTO messages (conversation_id, id, run_id, node_id, role, text)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                message_rows,
+            )
+            conn.executemany(
+                """
+                INSERT INTO message_fts (message_id, conversation_id, run_id, role, text)
+                VALUES (?, 'conv_check_scale', 'test_run', 'user', 'indexed')
+                """,
+                [(f"scale_message_{index}",) for index in range(row_count)],
+            )
+            conn.execute(
+                "UPDATE conversations SET message_count = message_count + ? WHERE id = 'conv_check_scale'",
+                (row_count,),
+            )
+            conn.commit()
+
+        buf = StringIO()
+        started = time.monotonic()
+        with redirect_stdout(buf):
+            run_check(SimpleNamespace(db=db_path, format="json"), logger)
+        elapsed = time.monotonic() - started
+
+        result = json.loads(buf.getvalue())
+        self.assertTrue(result["ok"])
+        self.assertLess(elapsed, 5.0)
 
     def test_check_detects_missing_canonical_snapshot_marker(self):
         db_path = self._canonical_ingest([_make_conv("conv_snapshot_check", "snapshot me")])
