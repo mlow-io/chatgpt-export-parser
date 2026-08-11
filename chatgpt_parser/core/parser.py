@@ -284,6 +284,8 @@ def process_conversation(conv: Dict[str, Any],
         "metadata": {
             "conversation_origin": conv.get("conversation_origin"),
             "is_do_not_remember": conv.get("is_do_not_remember"),
+            "async_status": conv.get("async_status"),
+            "is_read_only": conv.get("is_read_only"),
         },
         "source_file": source_file
     }

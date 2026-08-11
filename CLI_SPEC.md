@@ -71,6 +71,10 @@ Behavior:
 - records run provenance in `runs`, `conversation_runs`, and `message_runs`
 - recognizes identical conversation snapshots without rewriting canonical
   messages, FTS entries, or rich-resource rows
+- makes a newer canonical replacement exact by pruning nodes, messages, graph
+  edges, links, attachments, and tool rows absent from that snapshot
+- preserves asynchronous/read-only conversation status in metadata and records
+  removed message IDs on the replacing run
 - emits diagnostics for unsupported or incomplete inputs in JSON mode
 
 ### canonical-ingest

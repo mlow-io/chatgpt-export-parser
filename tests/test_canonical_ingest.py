@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 import sqlite3
@@ -445,6 +446,96 @@ class CanonicalArchiveIngestTests(unittest.TestCase):
                     ).fetchone()[0],
                     0,
                 )
+        finally:
+            os.unlink(db_path)
+
+    def test_newer_snapshot_prunes_removed_messages_and_resources(self):
+        original = _make_rich_conv("conv_prune")
+        replacement = copy.deepcopy(original)
+        user_node = "node_conv_prune_user"
+        tool_call_node = "node_conv_prune_tool_call"
+        tool_result_node = "node_conv_prune_tool_result"
+        image_node = "node_conv_prune_image"
+        replacement["update_time"] = 50.0
+        replacement["safe_urls"] = []
+        replacement["blocked_urls"] = []
+        replacement["mapping"].pop(tool_call_node)
+        replacement["mapping"].pop(tool_result_node)
+        replacement["mapping"][user_node]["children"] = [image_node]
+        replacement["mapping"][image_node]["parent"] = user_node
+
+        db_path = self._ingest_runs([
+            ("run_original", [original]),
+            ("run_replacement", [replacement]),
+        ])
+        try:
+            with self._open(db_path) as conn:
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM messages WHERE conversation_id = 'conv_prune'"
+                    ).fetchone()[0],
+                    2,
+                )
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM nodes WHERE conversation_id = 'conv_prune'"
+                    ).fetchone()[0],
+                    2,
+                )
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM tool_calls WHERE conversation_id = 'conv_prune'"
+                    ).fetchone()[0],
+                    0,
+                )
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM tool_results WHERE conversation_id = 'conv_prune'"
+                    ).fetchone()[0],
+                    0,
+                )
+                link_sources = {
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT source FROM links WHERE conversation_id = 'conv_prune'"
+                    )
+                }
+                self.assertEqual(link_sources, {"message_text"})
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM attachments WHERE conversation_id = 'conv_prune'"
+                    ).fetchone()[0],
+                    1,
+                )
+                metadata = json.loads(
+                    conn.execute(
+                        """
+                        SELECT metadata FROM conversation_runs
+                        WHERE run_id = 'run_replacement' AND conversation_id = 'conv_prune'
+                        """
+                    ).fetchone()[0]
+                )
+                self.assertEqual(
+                    metadata["removed_message_ids"],
+                    ["msg_conv_prune_tool_call", "msg_conv_prune_tool_result"],
+                )
+        finally:
+            os.unlink(db_path)
+
+    def test_conversation_status_metadata_is_preserved(self):
+        conversation = _make_single_turn("conv_status")
+        conversation["async_status"] = 3
+        conversation["is_read_only"] = True
+        db_path = self._ingest_runs([("run_status", [conversation])])
+        try:
+            with self._open(db_path) as conn:
+                metadata = json.loads(
+                    conn.execute(
+                        "SELECT metadata FROM conversations WHERE id = 'conv_status'"
+                    ).fetchone()[0]
+                )
+                self.assertEqual(metadata["async_status"], 3)
+                self.assertTrue(metadata["is_read_only"])
         finally:
             os.unlink(db_path)
 

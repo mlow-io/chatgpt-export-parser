@@ -329,6 +329,16 @@ class CanonicalManager:
             return
 
         canonical_snapshot = self._should_replace_conversation_snapshot(conv_id, conversation_row)
+        if canonical_snapshot and self._conversation_exists(conv_id):
+            removed_message_ids = self._prune_canonical_snapshot(
+                conv_id=conv_id,
+                mapping=mapping,
+                all_messages=all_messages,
+            )
+            if removed_message_ids:
+                metadata = _dict(json.loads(conversation_row["metadata"]))
+                metadata["removed_message_ids"] = removed_message_ids
+                conversation_row["metadata"] = _json(metadata)
         if canonical_snapshot or not self._conversation_exists(conv_id):
             self._upsert_conversation(conversation_row)
         self._upsert_conversation_run(active_run_id, conversation_row, canonical_snapshot)
@@ -486,11 +496,59 @@ class CanonicalManager:
                 {
                     "conversation_origin": conv.get("conversation_origin"),
                     "is_do_not_remember": conv.get("is_do_not_remember"),
+                    "async_status": conv.get("async_status"),
+                    "is_read_only": conv.get("is_read_only"),
                     "source_fingerprint": source_fingerprint,
                 }
             ),
             "source_file": source_file,
         }
+
+    def _prune_canonical_snapshot(
+        self,
+        *,
+        conv_id: str,
+        mapping: Dict[str, Dict[str, Any]],
+        all_messages: List[Dict[str, Any]],
+    ) -> List[str]:
+        desired_node_ids = set(mapping)
+        desired_message_ids = {row["id"] for row in all_messages}
+        existing_node_ids = {
+            row[0]
+            for row in self.conn.execute(
+                "SELECT id FROM nodes WHERE conversation_id = ?",
+                (conv_id,),
+            )
+        }
+        existing_message_ids = {
+            row[0]
+            for row in self.conn.execute(
+                "SELECT id FROM messages WHERE conversation_id = ?",
+                (conv_id,),
+            )
+        }
+        removed_node_ids = sorted(existing_node_ids - desired_node_ids)
+        removed_message_ids = sorted(existing_message_ids - desired_message_ids)
+
+        if removed_message_ids:
+            self.conn.executemany(
+                "DELETE FROM message_fts WHERE conversation_id = ? AND message_id = ?",
+                [(conv_id, message_id) for message_id in removed_message_ids],
+            )
+            self.conn.executemany(
+                "DELETE FROM messages WHERE conversation_id = ? AND id = ?",
+                [(conv_id, message_id) for message_id in removed_message_ids],
+            )
+        self.conn.execute("DELETE FROM node_children WHERE conversation_id = ?", (conv_id,))
+        if removed_node_ids:
+            self.conn.executemany(
+                "DELETE FROM nodes WHERE conversation_id = ? AND id = ?",
+                [(conv_id, node_id) for node_id in removed_node_ids],
+            )
+        for table in ("links", "attachments", "tool_calls", "tool_results"):
+            self.conn.execute(f"DELETE FROM {table} WHERE conversation_id = ?", (conv_id,))
+
+        return removed_message_ids
 
     def _upsert_nodes(
         self,
