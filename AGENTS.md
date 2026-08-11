@@ -38,6 +38,7 @@ python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./my
 - Validate: `python3 ChatGPT_Export_parser.py check --db ./chatgpt_export.db --format json`
 - Tests: `python3 -m unittest discover -s tests`
 - Repository privacy: `scripts/check_repository_privacy.sh`
+- Candidate-ref privacy: `scripts/audit_ref_privacy.sh <ref>`
 
 ## Coding Style
 
