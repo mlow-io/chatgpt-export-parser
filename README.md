@@ -237,6 +237,8 @@ Each ingest still creates a run record.
 - `message_runs`: which canonical messages were seen in that run
 
 This gives you historical visibility without making the main archive run-scoped.
+Identical reimports add snapshot and message provenance without rewriting the
+canonical conversation, FTS index, or rich-resource rows.
 
 ## Why This Replaced The Older Approach
 
@@ -259,11 +261,16 @@ For a normal ChatGPT-history browser, the right default is:
 - Local-first only
 - `conversations.json`, `*.db`, `generated/`, and other local artifacts are gitignored
 - only synthetic demo content in `demo/` should be committed
+- repository and candidate-ref guards reject private-data-shaped tracked paths,
+  large blobs, local-user paths, and personal-email addresses in tracked text
+- these guards do not inspect or certify commit-author metadata
 
 ## Development & Testing
 
 ```bash
 python3 -m unittest discover -s tests
+scripts/check_repository_privacy.sh
+scripts/audit_ref_privacy.sh HEAD
 ```
 
 Useful smoke checks:

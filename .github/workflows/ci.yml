@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - codex/unified-atlasbench-contract
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install SQLite CLI
+        run: sudo apt-get update && sudo apt-get install --yes sqlite3
+      - name: Run parser tests
+        run: python3 -m unittest discover -s tests
+      - name: Check tracked repository privacy
+        run: scripts/check_repository_privacy.sh
+      - name: Audit candidate ref privacy
+        run: scripts/audit_ref_privacy.sh HEAD
