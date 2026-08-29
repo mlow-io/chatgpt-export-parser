@@ -27,15 +27,20 @@ Keep the boundary narrow:
 
 ## Current State
 
+Read `CURRENT.md` before substantial work. It is the single current handoff for
+validated local/remote checkpoints, the paired app revision, the active goal,
+validation status, and the next action.
+
 Stable records live in:
 
+- `CURRENT.md` — concise current handoff
 - `README.md` — product, installation, workflow, and safety
 - `CLI_SPEC.md` — versioned command behavior
 - `SCHEMA_AND_SPEC.md` — canonical schema and provenance rules
-- `TODOS.md` — short ordered follow-up list
 
-Do not create parallel `current/`, prompt, implementation, or generated
-documentation stacks. Update the stable records above when behavior changes.
+Do not create parallel current, roadmap, plan, prompt, implementation, or
+generated documentation stacks. Update the stable records above when behavior
+changes.
 
 ## Code Map
 
