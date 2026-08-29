@@ -1,6 +1,10 @@
-# ChatGPT Export Parser
+# AtlasBench Parser
 
-Local-first Python library and CLI for turning ChatGPT exports into one cumulative, canonical SQLite archive.
+AtlasBench-owned Python library and CLI for turning ChatGPT exports into one
+cumulative, canonical SQLite archive. It is the dedicated parser dependency for
+AtlasBench GPT, with its own repository, release decisions, and compatibility
+contract. It is not a branch or a distribution of the separate general-purpose
+`chatgpt-export-parser` project.
 
 This repo now has one primary data story:
 
@@ -9,7 +13,9 @@ This repo now has one primary data story:
 - preserve **run provenance** without duplicating the logical conversation/message rows
 - keep ChatGPT-native structure (`conversations`, `messages`, `nodes`, `node_children`) so downstream readers stay simple
 
-The canonical archive is the standard output. It is the database AtlasBench GPT should consume directly.
+The canonical archive is the standard output consumed directly by AtlasBench
+GPT. The app identifies this implementation through the machine-readable
+contract field `implementation_id: "atlasbench-parser"`.
 
 ## What It Does
 
@@ -27,18 +33,18 @@ This repo includes synthetic demo data.
 
 ```bash
 # Build a canonical archive from the demo export
-chatgpt-parser parse-and-ingest \
+atlasbench-parser parse-and-ingest \
   demo/demo_conversations.json \
   --db demo/demo_chatgpt_canonical.db \
   --run-id demo_run
 
 # Search the canonical archive
-chatgpt-parser search \
+atlasbench-parser search \
   --db demo/demo_chatgpt_canonical.db \
   --q "Branch"
 
 # Export a conversation to Markdown
-chatgpt-parser export-conversation \
+atlasbench-parser export-conversation \
   --db demo/demo_chatgpt_canonical.db \
   --conversation-id demo_conv_1 \
   --output my_chat.md
@@ -54,14 +60,18 @@ package module, or the public Python API.
 No third-party dependencies are required.
 
 ```bash
-git clone https://github.com/mlow-io/chatgpt-export-parser.git
-cd chatgpt-export-parser
+git clone https://github.com/mlow-io/atlasbench-parser.git
+cd atlasbench-parser
 python3 -m pip install -e .
-chatgpt-parser contract
+atlasbench-parser contract
 ```
 
 Python 3.10 or newer is required. The package has no runtime dependencies
-outside the Python standard library.
+outside the Python standard library. The Python import module remains
+`chatgpt_parser` for the v1 native-client contract, so do not install this
+project and the separate general-purpose parser into the same Python
+environment. AtlasBench runs its selected checkout with an explicit
+`PYTHONPATH` to keep the source unambiguous.
 
 ## Python Library Contract
 
@@ -87,22 +97,23 @@ python3 -m chatgpt_parser --json contract
 python3 -m chatgpt_parser --json inspect-inputs /path/to/export
 ```
 
-AtlasBench GPT invokes the package module through this machine-readable
-process boundary. It does not duplicate export parsing logic and does not call
-the legacy `ChatGPT_Export_parser.py` shim.
+AtlasBench GPT invokes this package module through the machine-readable process
+boundary. It accepts only `implementation_id: "atlasbench-parser"`, so it does
+not silently fall back to the separate general-purpose parser or call the
+legacy `ChatGPT_Export_parser.py` shim.
 
 ## Standard Workflow
 
 ### 1. Ingest one or more exports into a canonical archive
 
 ```bash
-chatgpt-parser parse-and-ingest /path/to/conversations.json \
+atlasbench-parser parse-and-ingest /path/to/conversations.json \
   --db my_chats.db
 
-chatgpt-parser parse-and-ingest /path/to/export.zip \
+atlasbench-parser parse-and-ingest /path/to/export.zip \
   --db my_chats.db
 
-chatgpt-parser parse-and-ingest /path/to/october.json /path/to/november.json \
+atlasbench-parser parse-and-ingest /path/to/october.json /path/to/november.json \
   --db my_chats.db \
   --run-id 2026-04-06T12-00-00Z
 ```
@@ -118,7 +129,7 @@ Behavior:
 ### 2. Search
 
 ```bash
-chatgpt-parser search --db my_chats.db --q "quantum computing"
+atlasbench-parser search --db my_chats.db --q "quantum computing"
 ```
 
 Optional filters:
@@ -131,9 +142,9 @@ Optional filters:
 ### 3. Query
 
 ```bash
-chatgpt-parser query --db my_chats.db --type conversations --limit 10
+atlasbench-parser query --db my_chats.db --type conversations --limit 10
 
-chatgpt-parser query \
+atlasbench-parser query \
   --db my_chats.db \
   --type conversation_detail \
   --conversation-id <UUID> \
@@ -149,13 +160,13 @@ Notes:
 ### 4. Export
 
 ```bash
-chatgpt-parser export-conversation \
+atlasbench-parser export-conversation \
   --db my_chats.db \
   --conversation-id <UUID> \
   --output conversation.md \
   --frontmatter
 
-chatgpt-parser export-conversations \
+atlasbench-parser export-conversations \
   --db my_chats.db \
   --query "postgres" \
   --limit 10 \
@@ -171,8 +182,8 @@ Format behavior:
 ### 5. Validate and inspect provenance
 
 ```bash
-chatgpt-parser check --db my_chats.db --format json
-chatgpt-parser list-runs --db my_chats.db
+atlasbench-parser check --db my_chats.db --format json
+atlasbench-parser list-runs --db my_chats.db
 ```
 
 `list-runs` is now provenance inspection for the canonical archive, not a separate legacy mode.
@@ -182,8 +193,8 @@ chatgpt-parser list-runs --db my_chats.db
 ### 6. Dump and restore
 
 ```bash
-chatgpt-parser dump-db --db my_chats.db --output my_chats.sql
-chatgpt-parser restore-db --input my_chats.sql --db restored_chats.db
+atlasbench-parser dump-db --db my_chats.db --output my_chats.sql
+atlasbench-parser restore-db --input my_chats.sql --db restored_chats.db
 ```
 
 The dump/restore flow preserves the archive including the FTS-backed search surface.
@@ -281,11 +292,11 @@ scripts/audit_ref_privacy.sh HEAD
 Useful smoke checks:
 
 ```bash
-chatgpt-parser parse-and-ingest demo/demo_conversations.json --db demo/demo_chatgpt_canonical.db --run-id demo_run
-chatgpt-parser query --db demo/demo_chatgpt_canonical.db --type conversations --limit 2 --format json
-chatgpt-parser search --db demo/demo_chatgpt_canonical.db --q "branch" --format json
-chatgpt-parser export-conversation --db demo/demo_chatgpt_canonical.db --conversation-id demo_conv_1 --format text
-chatgpt-parser check --db demo/demo_chatgpt_canonical.db --format json
+atlasbench-parser parse-and-ingest demo/demo_conversations.json --db demo/demo_chatgpt_canonical.db --run-id demo_run
+atlasbench-parser query --db demo/demo_chatgpt_canonical.db --type conversations --limit 2 --format json
+atlasbench-parser search --db demo/demo_chatgpt_canonical.db --q "branch" --format json
+atlasbench-parser export-conversation --db demo/demo_chatgpt_canonical.db --conversation-id demo_conv_1 --format text
+atlasbench-parser check --db demo/demo_chatgpt_canonical.db --format json
 ```
 
 For deeper schema details, see [SCHEMA_AND_SPEC.md](SCHEMA_AND_SPEC.md) and [CLI_SPEC.md](CLI_SPEC.md).

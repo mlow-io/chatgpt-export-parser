@@ -1,6 +1,7 @@
-# ChatGPT Export CLI Spec
+# AtlasBench Parser CLI Spec
 
-This file describes the implemented CLI surface for the canonical ChatGPT archive.
+This file describes the implemented CLI surface for the AtlasBench-owned
+canonical ChatGPT archive parser.
 
 ## Product Story
 
@@ -31,9 +32,10 @@ Print the versioned Python/native integration contract as JSON.
 python3 -m chatgpt_parser --json contract
 ```
 
-The payload includes the package version, contract version, canonical schema
-version, supported input kinds, and operations. Native clients should reject
-unsupported contract versions before starting an import.
+The payload includes `implementation_id`, package version, contract version,
+canonical schema version, supported input kinds, and operations. AtlasBench
+accepts only `implementation_id: "atlasbench-parser"`, contract v1, and schema
+v2 before starting an import.
 
 ### inspect-inputs
 
@@ -51,7 +53,7 @@ targets. `can_ingest` is true only when canonical conversation JSON was found.
 Standard ingest command.
 
 ```bash
-chatgpt-parser parse-and-ingest /path/to/export.json --db ./my_chats.db
+atlasbench-parser parse-and-ingest /path/to/export.json --db ./my_chats.db
 ```
 
 Arguments:
@@ -86,7 +88,7 @@ Same flags, same behavior, same canonical archive output.
 ### query
 
 ```bash
-chatgpt-parser query --db ./my_chats.db --type conversations --limit 10
+atlasbench-parser query --db ./my_chats.db --type conversations --limit 10
 ```
 
 Arguments:
@@ -104,7 +106,7 @@ Arguments:
 ### search
 
 ```bash
-chatgpt-parser search --db ./my_chats.db --q "pizza"
+atlasbench-parser search --db ./my_chats.db --q "pizza"
 ```
 
 Arguments:
@@ -122,7 +124,7 @@ Arguments:
 ### export-conversation
 
 ```bash
-chatgpt-parser export-conversation \
+atlasbench-parser export-conversation \
   --db ./my_chats.db \
   --conversation-id <UUID> \
   --output out.md \

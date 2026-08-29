@@ -1,6 +1,6 @@
-# ChatGPT Export Parser – Canonical Schema & CLI Notes
+# AtlasBench Parser – Canonical Schema & CLI Notes
 
-This repo now standardizes on one SQLite output:
+This independent AtlasBench parser standardizes on one SQLite output:
 
 - the **canonical ChatGPT archive DB**
 

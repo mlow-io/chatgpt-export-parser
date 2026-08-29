@@ -28,7 +28,7 @@ def _add_ingest_arguments(command_parser: argparse.ArgumentParser, help_text: st
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ChatGPT Export Parser canonical archive CLI")
+    parser = argparse.ArgumentParser(description="AtlasBench Parser canonical archive CLI")
     parser.add_argument("--quiet", action="store_true", help="Minimize stdout")
     parser.add_argument("--verbose", action="store_true", help="Debug logging")
     parser.add_argument("--json", action="store_true", help="Machine-readable JSON output")

@@ -46,6 +46,7 @@ def _conversation(conversation_id: str):
 class LibraryAPITests(unittest.TestCase):
     def test_contract_is_machine_readable_and_versioned(self):
         contract = parser_contract()
+        self.assertEqual(contract["implementation_id"], "atlasbench-parser")
         self.assertEqual(contract["contract_version"], 1)
         self.assertGreaterEqual(contract["canonical_schema_version"], 2)
         self.assertIn("ingest_exports", contract["operations"])
@@ -153,6 +154,7 @@ class LibraryAPITests(unittest.TestCase):
             text=True,
         )
         payload = json.loads(completed.stdout)
+        self.assertEqual(payload["implementation_id"], "atlasbench-parser")
         self.assertEqual(payload["contract_version"], 1)
 
 

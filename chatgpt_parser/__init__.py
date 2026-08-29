@@ -2,6 +2,7 @@
 
 from .api import (
     CONTRACT_VERSION,
+    IMPLEMENTATION_ID,
     PACKAGE_VERSION,
     IngestError,
     IngestResult,
@@ -13,6 +14,7 @@ from .api import (
 
 __all__ = [
     "CONTRACT_VERSION",
+    "IMPLEMENTATION_ID",
     "PACKAGE_VERSION",
     "IngestError",
     "IngestResult",

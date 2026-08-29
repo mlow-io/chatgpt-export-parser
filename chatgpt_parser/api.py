@@ -18,6 +18,7 @@ from .db.canonical_schema import CANONICAL_SCHEMA_VERSION
 
 PACKAGE_VERSION = "0.3.0"
 CONTRACT_VERSION = 1
+IMPLEMENTATION_ID = "atlasbench-parser"
 
 
 class IngestError(RuntimeError):
@@ -80,6 +81,7 @@ def parser_contract() -> dict[str, Any]:
     """Return the versioned capabilities consumed by native clients."""
 
     return {
+        "implementation_id": IMPLEMENTATION_ID,
         "contract_version": CONTRACT_VERSION,
         "package_version": PACKAGE_VERSION,
         "canonical_schema_version": CANONICAL_SCHEMA_VERSION,

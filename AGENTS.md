@@ -2,13 +2,16 @@
 
 ## Product Scope
 
-This repository has one job: convert raw ChatGPT exports into a canonical,
-cumulative SQLite archive for AtlasBench and compatible local tools.
+This repository is the dedicated AtlasBench parser. It converts raw ChatGPT
+exports into a canonical, cumulative SQLite archive for AtlasBench GPT. It is
+independent of the separate general-purpose `chatgpt-export-parser` repository:
+do not merge, publish from, or describe that repository as this project's
+upstream by default.
 
 The standard workflow is:
 
 ```bash
-python3 ChatGPT_Export_parser.py parse-and-ingest /path/to/export.json --db ./my_chats.db
+atlasbench-parser parse-and-ingest /path/to/export.json --db ./my_chats.db
 ```
 
 `canonical-ingest` is an explicit alias for the same canonical archive workflow.
@@ -37,8 +40,8 @@ documentation stacks. Update the stable records above when behavior changes.
 ## Code Map
 
 - Package/native API: `chatgpt_parser/api.py`
-- CLI entrypoints: `python3 -m chatgpt_parser`, `chatgpt-parser`, and the legacy
-  compatibility shim `ChatGPT_Export_parser.py`
+- CLI entrypoints: `python3 -m chatgpt_parser`, `atlasbench-parser`, and the
+  legacy compatibility shim `ChatGPT_Export_parser.py`
 - CLI implementation: `chatgpt_parser/cli/`
 - Canonical DB logic: `chatgpt_parser/db/canonical_manager.py`, `chatgpt_parser/db/canonical_schema.py`
 - Query/export helpers: `chatgpt_parser/core/exporter.py`
@@ -57,7 +60,8 @@ documentation stacks. Update the stable records above when behavior changes.
 
 ## Build, Test, and Development Commands
 
-- Contract: `python3 -m chatgpt_parser --json contract`
+- Contract: `python3 -m chatgpt_parser --json contract` must report
+  `implementation_id: "atlasbench-parser"`, contract v1, and canonical schema v2
 - Canonical ingest: `python3 -m chatgpt_parser canonical-ingest export.json --db ./chatgpt_export.db`
 - Validate: `python3 -m chatgpt_parser check --db ./chatgpt_export.db --format json`
 - Tests: `python3 -m unittest discover -s tests`
@@ -70,6 +74,8 @@ documentation stacks. Update the stable records above when behavior changes.
 - small, direct functions
 - snake_case for functions/variables
 - preserve machine-readable CLI output behavior
+- keep this checkout isolated from a separately installed `chatgpt_parser`
+  module; AtlasBench supplies the selected checkout through `PYTHONPATH`
 
 ## Commit Guidance
 
