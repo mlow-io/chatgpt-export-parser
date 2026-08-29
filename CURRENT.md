@@ -12,10 +12,12 @@ general-purpose parser.
 ## Checkpoints
 
 - Validated local implementation: `570d9cd` on `main`
-- Published private `origin/main`: `4eb8e5e`
+- Published private `origin/main` contains implementation `570d9cd` and its
+  documentation successors.
 - Paired AtlasBench app implementation: `3d2cb5e` on
   `codex/parser-contract-hardening`
-- Published app branch before reconciliation: `2f1831e`
+- Published app branch contains implementation `3d2cb5e` and its documentation
+  successors.
 
 The complete cross-repository gate tested parser `570d9cd` with app `3d2cb5e`.
 Documentation-only reconciliation commits may follow those implementations
@@ -23,9 +25,8 @@ without changing the tested code pair.
 
 ## Active Goal
 
-Publish the dedicated parser identity and matching app integration while
-preserving the exact validated pair, then support the app's staged production
-archive rebuild and comparison.
+Support the app's staged production archive rebuild and comparison while
+preserving the exact validated parser/app pair.
 
 ## Verified Validation
 
@@ -35,12 +36,13 @@ archive rebuild and comparison.
 - AtlasBench `scripts/check_parser_contract.sh ~/AtlasBenchGPT-parser`: 44
   parser tests and 58 Swift tests pass against app `3d2cb5e`.
 - Repository privacy guard and `audit_ref_privacy.sh HEAD` pass at `570d9cd`.
+- Private parser CI passed on Python 3.10 and 3.13 after publication; the paired
+  app pull-request CI also passed its privacy, Swift-test, and Xcode-build gate.
 
 ## Next Action
 
-Push this repository's documentation successor first and verify private parser
-CI. Then push the paired AtlasBench app documentation successor and verify app
-CI before rebuilding any production archive.
+Rebuild a new staging archive from the published parser, compare it with the
+active archive, and require explicit approval before activation.
 
 ## Synchronization Rule
 
