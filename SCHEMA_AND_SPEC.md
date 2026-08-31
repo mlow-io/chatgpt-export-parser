@@ -235,6 +235,15 @@ SQLite FTS5 table over canonical message text.
 
 ## CLI Surface
 
+### Content-free structural profiling
+
+`profile-input` is a read-only compatibility inspection and does not alter the
+canonical archive or schema. Its report is intentionally separate from ingest
+traces because it excludes raw paths, source names, content, identifiers, URLs,
+attachment names, and arbitrary string-valued metadata. The report records a
+candidate dialect and normalization generation as diagnostic evidence only; a
+canonical run records dialect provenance only after its adapter is verified.
+
 ### Standard ingest
 
 `parse-and-ingest`

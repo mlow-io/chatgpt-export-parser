@@ -102,6 +102,25 @@ boundary. It accepts only `implementation_id: "atlasbench-parser"`, so it does
 not silently fall back to the separate general-purpose parser or call the
 legacy `ChatGPT_Export_parser.py` shim.
 
+## Content-Free Export Profiling
+
+Before a real export is considered for ingestion, inspect one explicitly
+selected input without creating a database or extracting an archive:
+
+```bash
+python3 -m chatgpt_parser profile-input /selected/export.zip \
+  --label export-A \
+  --acquired-on 2026-08-01
+```
+
+The report intentionally contains no raw source path, title, message text,
+identifier, URL, attachment filename, or arbitrary string metadata. It uses
+sanitized member handles, content hashes, structural key/type/cardinality
+statistics, graph-shape counts, safe enum allowlists, and a structural
+fingerprint to distinguish packaging from payload differences. JSONL framing is
+reported but remains unsupported for canonical ingest until independently
+verified.
+
 ## Standard Workflow
 
 ### 1. Ingest one or more exports into a canonical archive

@@ -14,6 +14,7 @@ from typing import Any, Iterable
 
 from .cli.commands import _discover_input_sources, run_canonical_ingest
 from .db.canonical_schema import CANONICAL_SCHEMA_VERSION
+from .profiler import REPORT_VERSION as STRUCTURAL_PROFILE_REPORT_VERSION, profile_export
 
 
 PACKAGE_VERSION = "0.3.0"
@@ -88,6 +89,10 @@ def parser_contract() -> dict[str, Any]:
         "python_requires": ">=3.10",
         "input_kinds": ["json_file", "export_folder", "zip_file"],
         "diagnostic_input_kinds": ["chat_html"],
+        "structural_profile": {
+            "report_version": STRUCTURAL_PROFILE_REPORT_VERSION,
+            "content_free": True,
+        },
         "ingest_semantics": {
             "atomic": True,
             "rejects_partial_runs": True,
@@ -95,6 +100,7 @@ def parser_contract() -> dict[str, Any]:
         },
         "operations": [
             "inspect_inputs",
+            "profile_export",
             "ingest_exports",
             "query",
             "search",

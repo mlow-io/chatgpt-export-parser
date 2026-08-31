@@ -48,6 +48,30 @@ python3 -m chatgpt_parser --json inspect-inputs /path/to/export.zip
 Inputs may be JSON files, export folders, ZIPs, or `chat.html` diagnostic
 targets. `can_ingest` is true only when canonical conversation JSON was found.
 
+### profile-input
+
+Create a content-free structural compatibility report for exactly one selected
+candidate export. This command never creates or changes a database and never
+extracts an archive in place.
+
+```bash
+python3 -m chatgpt_parser profile-input /selected/export.zip \
+  --label export-A \
+  --acquired-on 2026-08-01
+```
+
+The report contains an opaque caller-supplied label, optional acquisition date,
+container kind, sanitized member handles, extensions, sizes, SHA-256 content
+hashes, JSON/JSONL framing, structural paths and cardinalities, graph-shape
+statistics, allowlisted enum categories, detected dialect candidate,
+normalization generation, fidelity capabilities, findings, and a structural
+fingerprint. It never emits a supplied path, raw member name, title, message
+content, identifier, URL, attachment filename, or arbitrary string metadata.
+
+`profile-input` recognizes JSONL framing only to report it as unsupported:
+JSONL is not an ingest input unless future primary evidence and a dialect
+adapter explicitly add it.
+
 ### parse-and-ingest
 
 Standard ingest command.

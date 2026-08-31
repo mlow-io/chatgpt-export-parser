@@ -10,6 +10,7 @@ from .api import (
     ingest_exports,
     inspect_inputs,
     parser_contract,
+    profile_export,
 )
 
 __all__ = [
@@ -22,4 +23,5 @@ __all__ = [
     "ingest_exports",
     "inspect_inputs",
     "parser_contract",
+    "profile_export",
 ]

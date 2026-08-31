@@ -1,7 +1,7 @@
 import argparse
 import json
 
-from ..api import ingest_exports, inspect_inputs, parser_contract
+from ..api import ingest_exports, inspect_inputs, parser_contract, profile_export
 from ..core import exporter
 from ..db import maintenance
 from ..utils.logging import setup_logging
@@ -119,6 +119,14 @@ def main():
     p_inspect = subparsers.add_parser("inspect-inputs", help="Inspect export inputs without changing a database")
     p_inspect.add_argument("inputs", nargs="+")
 
+    p_profile = subparsers.add_parser(
+        "profile-input",
+        help="Create a content-free structural compatibility report without ingesting",
+    )
+    p_profile.add_argument("input")
+    p_profile.add_argument("--label", required=True, help="Opaque label, for example export-A")
+    p_profile.add_argument("--acquired-on", dest="acquisition_date")
+
     args = parser.parse_args()
     logger = setup_logging(None, verbose=args.verbose and not args.quiet and not args.json)
     summary = {}
@@ -180,6 +188,13 @@ def main():
         return
     elif args.command == "inspect-inputs":
         print(json.dumps(inspect_inputs(args.inputs).to_dict(), indent=2))
+        return
+    elif args.command == "profile-input":
+        print(json.dumps(
+            profile_export(args.input, label=args.label, acquisition_date=args.acquisition_date),
+            indent=2,
+            sort_keys=True,
+        ))
         return
 
     if args.json:
