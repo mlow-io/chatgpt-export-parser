@@ -47,6 +47,8 @@ verified adapter is ready.
 - `python3 -m unittest discover -s tests`: 50 tests pass at `e3a7874`.
 - `python3 -m chatgpt_parser --json contract`: implementation
   `atlasbench-parser`, contract v1, package 0.3.0, schema v2, Python 3.10+.
+- AtlasBench `scripts/check_parser_contract.sh` passes with the local profiler
+  commit: 50 parser tests and 58 Swift tests pass against app `3d2cb5e`.
 - AtlasBench `scripts/check_parser_contract.sh ~/AtlasBenchGPT-parser`: 44
   parser tests and 58 Swift tests pass against app `3d2cb5e`.
 - Repository privacy guard and `audit_ref_privacy.sh HEAD` pass at `570d9cd`.
