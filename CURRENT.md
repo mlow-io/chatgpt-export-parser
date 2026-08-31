@@ -1,6 +1,6 @@
 # AtlasBench Parser — Current Handoff
 
-Last verified: 2026-08-29
+Last verified: 2026-08-31
 
 ## Product Identity
 
@@ -25,12 +25,26 @@ without changing the tested code pair.
 
 ## Active Goal
 
-Support the app's staged production archive rebuild and comparison while
-preserving the exact validated parser/app pair.
+Establish evidence-backed compatibility for materially different ChatGPT export
+representations while preserving the exact validated parser/app pair until a
+verified adapter is ready.
+
+## Compatibility Work
+
+- Local commit `e3a7874` adds the content-free structural profiler (`profile-input`
+  / `profile_export`) and synthetic privacy tests. It does not change canonical
+  schema v2, ingest semantics, or any payload adapter.
+- The profiler accepts one explicitly selected local input, never writes a
+  database or extracts an archive, and emits only opaque labels, sanitized
+  member handles, hashes, structural statistics, safe enums, findings, and a
+  structural fingerprint.
+- No real export has been profiled or ingested for this compatibility work.
+- JSONL is detected only to report it as unsupported; no authoritative evidence
+  currently supports JSONL as a ChatGPT export payload.
 
 ## Verified Validation
 
-- `python3 -m unittest discover -s tests`: 44 tests pass.
+- `python3 -m unittest discover -s tests`: 50 tests pass at `e3a7874`.
 - `python3 -m chatgpt_parser --json contract`: implementation
   `atlasbench-parser`, contract v1, package 0.3.0, schema v2, Python 3.10+.
 - AtlasBench `scripts/check_parser_contract.sh ~/AtlasBenchGPT-parser`: 44
@@ -41,8 +55,10 @@ preserving the exact validated parser/app pair.
 
 ## Next Action
 
-Rebuild a new staging archive from the published parser, compare it with the
-active archive, and require explicit approval before activation.
+Obtain one exact user-supplied export path and acquisition date, run only the
+content-free profiler with an opaque label, inspect the generated report for
+leakage, then classify its packaging and payload evidence before proposing any
+adapter or staging ingest.
 
 ## Synchronization Rule
 
